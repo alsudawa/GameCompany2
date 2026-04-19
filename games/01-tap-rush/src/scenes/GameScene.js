@@ -12,6 +12,7 @@ import { Juice } from '../../../../shared/juice.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
+import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
@@ -58,21 +59,38 @@ export class GameScene extends Phaser.Scene {
 
     // HUD
     this.drawHudBg();
-    this.hudScore = this.add.text(20, 8, '0', {
-      fontFamily: 'Arial, sans-serif',
-      fontSize: '48px', fontStyle: 'bold', color: '#00e5ff',
-      stroke: '#000', strokeThickness: 5,
-    }).setDepth(200);
 
-    this.hudTime = this.add.text(width - 20, 8, String(GAME.sessionSeconds), {
-      fontSize: '46px', fontStyle: 'bold', color: '#e8e8f0',
-      stroke: '#000', strokeThickness: 5,
-    }).setOrigin(1, 0).setDepth(200);
+    // 좌측: SCORE 라벨 + 큰 숫자
+    this.add.text(22, 14, 'SCORE', {
+      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+      color: '#6b708f',
+    }).setLetterSpacing(3).setDepth(201);
+    this.hudScore = this.add.text(22, 26, '0', {
+      fontFamily: FONT.display, fontSize: '40px', fontStyle: '900',
+      color: '#00e5ff',
+    }).setDepth(201).setLetterSpacing(1);
 
-    this.hudCombo = this.add.text(width / 2, 70, '', {
-      fontSize: '30px', fontStyle: 'bold', color: '#ff2bd6',
-      stroke: '#000', strokeThickness: 5,
-    }).setOrigin(0.5).setDepth(200);
+    // 우측: TIME 라벨 + 큰 숫자
+    this.add.text(width - 22, 14, 'TIME', {
+      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+      color: '#6b708f',
+    }).setOrigin(1, 0).setLetterSpacing(3).setDepth(201);
+    this.hudTime = this.add.text(width - 22, 26, String(GAME.sessionSeconds), {
+      fontFamily: FONT.display, fontSize: '40px', fontStyle: '900',
+      color: '#e8ecf5',
+    }).setOrigin(1, 0).setDepth(201).setLetterSpacing(1);
+
+    // 중앙 콤보 배지 영역
+    this.hudCombo = this.add.text(width / 2, 80, '', {
+      fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
+      color: '#ff2bd6',
+      stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(201).setLetterSpacing(2);
+
+    // 하단 시간 progress bar
+    this.timeBarBg = this.add.graphics().setDepth(200);
+    this.timeBar = this.add.graphics().setDepth(201);
+    this.drawTimeBar(1);
 
     // 콤보 진행 바 (우측 세로바)
     this.comboBarBg = this.add.graphics().setDepth(200);
@@ -117,25 +135,63 @@ export class GameScene extends Phaser.Scene {
 
   drawBaseBg() {
     const { width, height } = this.scale;
+    // 배경 그리드 + 뷰포트 프레임 + 스캔라인
+    UI.drawGrid(this, width, height, { cell: 40, color: 0x0f1530, alpha: 0.5, depth: -25 });
+    UI.drawViewportFrame(this, width, height, { color: 0x00e5ff, alpha: 0.35, depth: -8, inset: 4 });
+    UI.drawScanlines(this, width, height, { gap: 3, alpha: 0.035, depth: 1200 });
+
+    // 바닥 네온 웨이브
     const g = this.bgBase;
     g.clear();
-    // 하단 네온 글로우 바
-    g.fillStyle(0x00e5ff, 0.04);
-    g.fillRect(0, height - 140, width, 140);
-    g.fillStyle(0xff2bd6, 0.03);
-    g.fillRect(0, height - 80, width, 80);
-    // 상단 얇은 라인
-    g.lineStyle(1, 0x00e5ff, 0.3);
-    g.strokeLineShape(new Phaser.Geom.Line(0, 64, width, 64));
+    g.fillStyle(0x00e5ff, 0.05);
+    g.fillRect(0, height - 150, width, 150);
+    g.fillStyle(0xff2bd6, 0.04);
+    g.fillRect(0, height - 90, width, 90);
+    // 중앙 수평 기준선
+    g.lineStyle(1, 0x00e5ff, 0.15);
+    g.strokeLineShape(new Phaser.Geom.Line(0, height * 0.5, width, height * 0.5));
   }
 
   drawHudBg() {
     const { width } = this.scale;
+    const HUD_H = 76;
     const g = this.add.graphics().setDepth(100);
-    g.fillStyle(0x000000, 0.4);
-    g.fillRect(0, 0, width, 64);
-    g.lineStyle(1, 0x00e5ff, 0.5);
-    g.strokeLineShape(new Phaser.Geom.Line(0, 64, width, 64));
+    // 그라데이션 패널 (위에서 아래로 어두워짐)
+    g.fillStyle(0x04040c, 0.92);
+    g.fillRect(0, 0, width, HUD_H);
+    g.fillStyle(0x0a0f24, 0.55);
+    g.fillRect(0, HUD_H - 20, width, 20);
+    // 상단/하단 네온 라인
+    g.lineStyle(1, 0x00e5ff, 0.7);
+    g.strokeLineShape(new Phaser.Geom.Line(0, HUD_H, width, HUD_H));
+    g.lineStyle(1, 0x00e5ff, 0.15);
+    g.strokeLineShape(new Phaser.Geom.Line(0, HUD_H + 3, width, HUD_H + 3));
+    // 중앙 상단에 작은 상태 도트
+    const dotG = this.add.graphics().setDepth(201);
+    dotG.fillStyle(0x00e5ff, 1);
+    dotG.fillCircle(width / 2, 12, 2);
+    // HUD 좌우 코너 브래킷
+    UI.drawCornerBrackets(this, 4, 4, width - 8, HUD_H - 8, {
+      size: 12, color: 0x00e5ff, alpha: 0.7, depth: 201,
+    });
+  }
+
+  drawTimeBar(ratio) {
+    const { width, height } = this.scale;
+    const barH = 4;
+    const y = height - barH;
+    this.timeBarBg.clear();
+    this.timeBarBg.fillStyle(0x101428, 1);
+    this.timeBarBg.fillRect(0, y, width, barH);
+
+    this.timeBar.clear();
+    const r = Math.max(0, Math.min(1, ratio));
+    const color = r < 0.15 ? 0xff4d6d : r < 0.3 ? 0xffd24a : 0x00e5ff;
+    this.timeBar.fillStyle(color, 1);
+    this.timeBar.fillRect(0, y, width * r, barH);
+    // 상단 하이라이트
+    this.timeBar.fillStyle(0xffffff, 0.35);
+    this.timeBar.fillRect(0, y, width * r, 1);
   }
 
   drawComboBar() {
@@ -204,11 +260,12 @@ export class GameScene extends Phaser.Scene {
       this.remaining = Math.max(0, GAME.sessionSeconds - this.elapsed);
       const sec = Math.ceil(this.remaining);
       this.hudTime.setText(String(sec));
+      this.drawTimeBar(this.remaining / GAME.sessionSeconds);
       // 마지막 5초 긴박감
       if (sec <= 5 && sec > 0) {
         this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
       } else {
-        this.hudTime.setColor('#e8e8f0');
+        this.hudTime.setColor('#e8ecf5');
       }
 
       this.spawnTimer -= dt;
