@@ -294,6 +294,11 @@ export class Orb extends Phaser.GameObjects.Container {
   }
 
   deactivate() {
+    // 아직 alive=true 상태에서 들어왔다면 "낙하 중 놓침(미스)"
+    // pop()이나 endSession()은 먼저 alive=false로 만드므로 여기선 제외.
+    if (this.alive && this.kind !== ORB_KIND.BOMB && this.scene && this.scene.events) {
+      this.scene.events.emit('orbMissed', this);
+    }
     this.alive = false;
     this.setActive(false).setVisible(false);
     this.setPosition(-200, -200);

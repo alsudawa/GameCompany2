@@ -16,6 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
+  JUDGMENT, JUDGMENT_COLORS,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -100,6 +101,13 @@ export class GameScene extends Phaser.Scene {
     // 네온 콤보 테두리
     this.borderFx = this.add.graphics().setDepth(500);
     this.borderAlpha = 0;
+
+    // TAP ZONE (판정 라인) — 배경 레이어 바로 위
+    this.judgmentY = Math.round(height * JUDGMENT.lineYRatio);
+    this.drawJudgmentZone();
+
+    // 오브 낙하 놓침(fall-through) → MISS 처리
+    this.events.on('orbMissed', (orb) => this.onOrbMiss(orb));
 
     // 포인터 트레일 + 탭 스파크
     Juice.attachPointerTrail(this, this.skin.color);
@@ -192,6 +200,81 @@ export class GameScene extends Phaser.Scene {
     // 상단 하이라이트
     this.timeBar.fillStyle(0xffffff, 0.35);
     this.timeBar.fillRect(0, y, width * r, 1);
+  }
+
+  drawJudgmentZone() {
+    const { width } = this.scale;
+    const y = this.judgmentY;
+    const g = this.add.graphics().setDepth(-6);
+
+    // PERFECT 밴드 (강조) — 양쪽 끝 살짝 밝게
+    g.fillStyle(0xffd24a, 0.05);
+    g.fillRect(0, y - JUDGMENT.perfect, width, JUDGMENT.perfect * 2);
+
+    // 메인 라인
+    g.lineStyle(1, 0x00e5ff, 0.75);
+    g.strokeLineShape(new Phaser.Geom.Line(0, y, width, y));
+
+    // 양끝 짧은 브래킷 (화살표 느낌)
+    g.lineStyle(2, 0x00e5ff, 1);
+    g.strokeLineShape(new Phaser.Geom.Line(0, y - 10, 0, y + 10));
+    g.strokeLineShape(new Phaser.Geom.Line(0, y, 16, y));
+    g.strokeLineShape(new Phaser.Geom.Line(width - 16, y, width, y));
+    g.strokeLineShape(new Phaser.Geom.Line(width, y - 10, width, y + 10));
+
+    // 라벨 "TAP ZONE"
+    this.add.text(width / 2, y - 14, '◂  TAP ZONE  ▸', {
+      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+      color: '#00e5ff',
+    }).setOrigin(0.5).setDepth(-5).setLetterSpacing(4).setAlpha(0.8);
+
+    // 은은한 맥동 (라인 자체 알파)
+    const pulseLine = this.add.graphics().setDepth(-5);
+    pulseLine.lineStyle(1, 0xffd24a, 0.8);
+    pulseLine.strokeLineShape(new Phaser.Geom.Line(0, y, width, y));
+    this.tweens.add({
+      targets: pulseLine, alpha: { from: 0.15, to: 0.55 },
+      duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
+  }
+
+  judgeOrb(orb) {
+    const dy = Math.abs(orb.y - this.judgmentY);
+    if (dy <= JUDGMENT.perfect) return { tier: 'PERFECT', mul: JUDGMENT.perfectMul };
+    if (dy <= JUDGMENT.great)   return { tier: 'GREAT',   mul: JUDGMENT.greatMul };
+    if (dy <= JUDGMENT.good)    return { tier: 'GOOD',    mul: JUDGMENT.goodMul };
+    return                             { tier: 'BAD',     mul: JUDGMENT.badMul };
+  }
+
+  showJudgmentFeedback(tier, x, y) {
+    const color = JUDGMENT_COLORS[tier];
+    const hex = '#' + color.toString(16).padStart(6, '0');
+    const size = tier === 'PERFECT' ? 30 : tier === 'GREAT' ? 26 : tier === 'GOOD' ? 22 : 18;
+    const t = this.add.text(x, y - 44, tier, {
+      fontFamily: FONT.display, fontSize: `${size}px`, fontStyle: '900',
+      color: hex, stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(950).setLetterSpacing(3).setScale(0.5).setAlpha(0);
+
+    this.tweens.add({
+      targets: t, scale: 1.1, alpha: 1,
+      duration: 160, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, y: t.y - 24,
+          duration: 420, delay: 220, ease: 'Cubic.Out',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+  }
+
+  onOrbMiss(orb) {
+    if (!this.isPlaying) return;
+    const { width, height } = this.scale;
+    // 콤보 끊김 (탭은 없었지만 놓쳤다 — 가벼운 벌)
+    if (this.combo > 0) this.resetCombo();
+    // 하단 경계 근처에서 MISS 표시
+    this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
   }
 
   drawComboBar() {
@@ -338,16 +421,25 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // 콤보 판정
+    // 타이밍 판정 (TAP ZONE 기준)
+    const judge = this.judgeOrb(obj);
+    this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
+
+    // BAD 이하는 콤보를 깨지는 않지만 축적도 안 됨 (1로 고정 시작)
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
-    this.combo = inWindow ? this.combo + 1 : 1;
+    if (judge.tier === 'BAD') {
+      this.combo = 1;
+    } else {
+      this.combo = inWindow ? this.combo + 1 : 1;
+    }
     this.lastTapAt = now;
     this.tapsMade++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
 
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
-    const mul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
+    const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
+    const mul = comboMul * judge.mul;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;
@@ -389,9 +481,9 @@ export class GameScene extends Phaser.Scene {
       if (this.combo > 1) Audio.combo(this.combo);
     }
 
-    // 콤보 HUD 갱신
+    // 콤보 HUD 갱신 — 콤보배율만 표시 (타이밍배율은 팝업으로 전달)
     if (this.combo >= 2) {
-      this.hudCombo.setText(`COMBO ×${mul.toFixed(2)}  ${this.combo}`);
+      this.hudCombo.setText(`COMBO ×${comboMul.toFixed(2)}  ${this.combo}`);
       Juice.punch(this, this.hudCombo, 1.3, 180);
     }
 
