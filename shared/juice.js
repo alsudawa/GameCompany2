@@ -178,24 +178,20 @@ export const Juice = {
   },
 
   // 포인터를 따라다니는 네온 트레일. 씬 create()에서 한 번 호출.
+  // 드래그(down) 중에만, 40ms 이상 간격으로만 점을 찍어 입력 성능 보호.
   attachPointerTrail(scene, color = 0x00e5ff) {
-    const trail = [];
-    const MAX = 14;
+    let lastAt = 0;
     scene.input.on('pointermove', (pointer) => {
-      if (!pointer.isDown && trail.length === 0) {
-        // 항상 살짝 남기려면 이 분기 제거. 지금은 드래그 때만.
-      }
-      const dot = scene.add.circle(pointer.x, pointer.y, 5, color, 0.7).setDepth(800);
-      trail.push(dot);
-      if (trail.length > MAX) {
-        const old = trail.shift();
-        old.destroy();
-      }
+      if (!pointer.isDown) return;
+      const now = scene.time.now;
+      if (now - lastAt < 40) return;
+      lastAt = now;
+      const dot = scene.add.circle(pointer.x, pointer.y, 5, color, 0.6).setDepth(800);
       scene.tweens.add({
         targets: dot,
         alpha: 0,
         scale: 0,
-        duration: 360,
+        duration: 320,
         ease: 'Cubic.Out',
         onComplete: () => dot.destroy(),
       });

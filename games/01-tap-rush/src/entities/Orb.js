@@ -15,6 +15,11 @@ const RADIUS = {
   bomb: 32,
 };
 
+// 판정 여유. 시각 반지름 + SLOP = 히트박스.
+// 모바일 손가락 크기 고려해 넉넉하게.
+const HIT_SLOP = 22;
+const MAX_HIT = 62;
+
 export class Orb extends Phaser.GameObjects.Container {
   constructor(scene) {
     super(scene, 0, 0);
@@ -31,15 +36,19 @@ export class Orb extends Phaser.GameObjects.Container {
 
     this.add([this.glow, this.body, this.icon]);
 
-    this.setSize(90, 90);
+    this.setSize(130, 130);
+    // 히트박스는 가장 큰 오브(레어) 기준 + 여유. 충분히 커도 시각은 그대로.
     this.setInteractive(
-      new Phaser.Geom.Circle(0, 0, 44),
+      new Phaser.Geom.Circle(0, 0, MAX_HIT),
       Phaser.Geom.Circle.Contains,
     );
+    // 판정용 반지름(제곱). manual hit test에서 사용.
+    this.hitRadius = MAX_HIT;
 
     this.vy = 0;
     this.kind = ORB_KIND.NORMAL;
     this.alive = false;
+    this.spawnTime = 0;
     this._pulse = 0;
     this._trailTimer = 0;
     this.setVisible(false).setActive(false);
@@ -52,7 +61,9 @@ export class Orb extends Phaser.GameObjects.Container {
     this.alive = true;
     this._pulse = Math.random() * Math.PI * 2;
     this._trailTimer = 0;
-    this.setActive(true).setVisible(true).setScale(0.3).setAlpha(0).setRotation(0);
+    this.spawnTime = this.scene.time.now;
+    // 등장 트윈이 짧지만 시작부터 탭 가능하도록 scale은 0.6부터 시작
+    this.setActive(true).setVisible(true).setScale(0.6).setAlpha(0).setRotation(0);
 
     const r = RADIUS[kind] ?? RADIUS.normal;
     const color =
@@ -77,9 +88,16 @@ export class Orb extends Phaser.GameObjects.Container {
       targets: this,
       scale: 1,
       alpha: 1,
-      duration: 180,
+      duration: 140,
       ease: 'Back.Out',
     });
+  }
+
+  // 월드 좌표 (x, y)가 이 오브의 히트 반경 안인지. scale과 무관.
+  containsWorld(x, y) {
+    const dx = x - this.x;
+    const dy = y - this.y;
+    return (dx * dx + dy * dy) <= this.hitRadius * this.hitRadius;
   }
 
   drawBody(pulseAmp = 0) {

@@ -11,13 +11,13 @@ export const GAME = {
 };
 
 export const SPAWN = {
-  intervalStart: 0.45,      // 조금 더 빠르게 시작
-  intervalEnd: 0.16,        // 종반엔 거의 연타 수준
+  intervalStart: 0.50,
+  intervalEnd: 0.22,        // 종반도 탭이 가능한 선까지만
 };
 
 export const SPEED = {
-  start: 240,
-  end: 420,
+  start: 220,
+  end: 360,
 };
 
 export const PROB = {

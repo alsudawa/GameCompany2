@@ -85,10 +85,31 @@ export class GameScene extends Phaser.Scene {
 
     // 포인터 트레일 + 탭 스파크
     Juice.attachPointerTrail(this, this.skin.color);
+
+    // 수동 hit test — 겹친 오브 중 가장 가까운 것을 선택.
+    // 탭 지점에 스파크는 항상, 오브가 근처에 있으면 그 오브를 탭 처리.
     this.input.on('pointerdown', (pointer) => {
+      if (!this.isPlaying) return;
       Juice.spark(this, pointer.x, pointer.y, this.skin.color, 22);
+
+      // 후보 탐색: 살아있고, 포인터와 거리가 (hitRadius + 보너스) 이내
+      // 보너스는 "near miss"까지 관대하게 잡아주는 슬랙.
+      const GRACE = 18;
+      let best = null;
+      let bestDist = Infinity;
+      for (const o of this.orbs) {
+        if (!o.alive) continue;
+        const dx = pointer.x - o.x;
+        const dy = pointer.y - o.y;
+        const d2 = dx * dx + dy * dy;
+        const maxR = o.hitRadius + GRACE;
+        if (d2 <= maxR * maxR && d2 < bestDist) {
+          bestDist = d2;
+          best = o;
+        }
+      }
+      if (best) this.onOrbTap(best);
     });
-    this.input.on('gameobjectdown', (pointer, obj) => this.onOrbTap(obj));
 
     this.startCountdown();
     this.events.once('shutdown', () => this.cleanup());
