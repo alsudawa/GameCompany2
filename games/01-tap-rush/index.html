@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Tap Rush ⚡ · GameCompany2</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: #0a0a14;
+      color: #e8e8f0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      overscroll-behavior: none;
+      touch-action: manipulation;
+    }
+    #game-root {
+      width: 100vw; height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+    }
+    canvas { touch-action: none; }
+    .back-link {
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      color: #8a8aa8; text-decoration: none; font-size: 13px;
+      background: rgba(10,10,20,0.6); padding: 6px 10px; border-radius: 8px;
+      border: 1px solid rgba(0,229,255,0.2);
+    }
+    .back-link:hover { color: #00e5ff; border-color: #00e5ff; }
+  </style>
+</head>
+<body>
+  <a class="back-link" href="../../index.html">← 런처</a>
+  <div id="game-root"></div>
+
+  <!-- Phaser 3 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
