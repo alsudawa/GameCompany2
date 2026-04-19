@@ -11,25 +11,25 @@ export const GAME = {
 };
 
 export const SPAWN = {
-  intervalStart: 0.50,
-  intervalEnd: 0.22,        // 종반도 탭이 가능한 선까지만
+  intervalStart: 0.42,
+  intervalEnd: 0.17,
 };
 
 export const SPEED = {
-  start: 220,
-  end: 360,
+  start: 260,
+  end: 460,
 };
 
 export const PROB = {
-  rare: 0.12,               // 6%→12%: 젬 맛보기 자주
+  rare: 0.12,
   bombStart: 0.08,
-  bombEnd: 0.14,
+  bombEnd: 0.16,
 };
 
 export const COMBO = {
-  windowMs: 700,
-  bonusPerStep: 0.08,       // 0.05→0.08: 콤보 보상 체감 UP
-  maxMul: 5.0,              // 3.0→5.0: 상한도 확장
+  windowMs: 720,
+  bonusPerStep: 0.09,
+  maxMul: 6.0,
 };
 
 export const SCORE = {
