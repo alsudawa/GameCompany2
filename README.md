@@ -28,6 +28,16 @@
 자세한 로드맵은 [`company/roadmap.md`](company/roadmap.md) 참고.
 
 ## 실행 방법
+
+### 🌐 온라인 (GitHub Pages)
+`main` 또는 `claude/game-studio-team-project-nFUGo` 브랜치에 푸시되면
+`.github/workflows/pages.yml`이 자동으로 저장소 루트를 Pages에 배포합니다.
+
+> **최초 1회 필요**: GitHub 저장소 → `Settings` → `Pages` → **Source: "GitHub Actions"** 선택
+>
+> 배포 후 URL: `https://<owner>.github.io/<repo>/`
+
+### 💻 로컬
 ```bash
 # 저장소 루트에서
 python3 -m http.server 8080
