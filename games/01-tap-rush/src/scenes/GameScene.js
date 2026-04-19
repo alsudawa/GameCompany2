@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -53,6 +53,8 @@ export class GameScene extends Phaser.Scene {
     this.isPlaying = false;
     this.reachedRanks = new Set();
     this.reachedMilestones = new Set();
+    this.levelIdx = 0;
+    this.currentLevel = LEVELS[0];
 
     // 풀
     this.orbs = [];
@@ -81,8 +83,18 @@ export class GameScene extends Phaser.Scene {
       color: '#e8ecf5',
     }).setOrigin(1, 0).setDepth(201).setLetterSpacing(1);
 
-    // 중앙 콤보 배지 영역
-    this.hudCombo = this.add.text(width / 2, 80, '', {
+    // 중앙 상단: LEVEL 배지
+    this.hudLevelLabel = this.add.text(width / 2, 18, 'LEVEL', {
+      fontFamily: FONT.mono, fontSize: '9px', fontStyle: '700',
+      color: '#6b708f',
+    }).setOrigin(0.5, 0).setDepth(201).setLetterSpacing(3);
+    this.hudLevel = this.add.text(width / 2, 32, LEVELS[0].label, {
+      fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
+      color: '#ffd24a',
+    }).setOrigin(0.5, 0).setDepth(201).setLetterSpacing(3);
+
+    // 중앙 콤보 배지 영역 (HUD 아래)
+    this.hudCombo = this.add.text(width / 2, 96, '', {
       fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
       color: '#ff2bd6',
       stroke: '#000', strokeThickness: 4,
@@ -351,11 +363,13 @@ export class GameScene extends Phaser.Scene {
         this.hudTime.setColor('#e8ecf5');
       }
 
+      // 레벨 진행 체크
+      this.checkLevelProgression();
+
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnOrb();
-        const p = this.elapsed / GAME.sessionSeconds;
-        this.spawnTimer = Phaser.Math.Linear(SPAWN.intervalStart, SPAWN.intervalEnd, p);
+        this.spawnTimer = this.currentLevel.spawn;
       }
 
       if (this.remaining <= 0) this.endSession();
@@ -381,15 +395,52 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  checkLevelProgression() {
+    for (let i = LEVELS.length - 1; i > this.levelIdx; i--) {
+      if (this.elapsed >= LEVELS[i].at) {
+        this.levelIdx = i;
+        this.currentLevel = LEVELS[i];
+        this.hudLevel.setText(this.currentLevel.label);
+        this.showLevelBanner(this.currentLevel);
+        break;
+      }
+    }
+  }
+
+  showLevelBanner(lvl) {
+    const { width, height } = this.scale;
+    Audio.rankup();
+    Juice.flash(this, COLORS.gold, 160);
+    Juice.punch(this, this.hudLevel, 1.5, 220);
+
+    const t = this.add.text(width / 2, height * 0.38, `◆  ${lvl.label}  ◆`, {
+      fontFamily: FONT.display, fontSize: '42px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(970).setLetterSpacing(5).setAlpha(0).setScale(0.5);
+
+    this.tweens.add({
+      targets: t, alpha: 1, scale: 1.1, duration: 220, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, y: t.y - 30,
+          duration: 460, delay: 280, ease: 'Cubic.In',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+    Juice.ring(this, width / 2, height * 0.38, {
+      color: COLORS.gold, radius: 260, count: 2, duration: 500,
+    });
+  }
+
   spawnOrb() {
     const { width } = this.scale;
     const marginX = 64;
     const x = Phaser.Math.Between(marginX, width - marginX);
     const y = -40;
 
-    const p = this.elapsed / GAME.sessionSeconds;
-    const speed = Phaser.Math.Linear(SPEED.start, SPEED.end, p);
-    const bombProb = Phaser.Math.Linear(PROB.bombStart, PROB.bombEnd, p);
+    const speed = this.currentLevel.speed;
+    const bombProb = this.currentLevel.bomb;
 
     const roll = Math.random();
     let kind;

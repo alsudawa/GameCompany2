@@ -10,21 +10,33 @@ export const GAME = {
   spawnMarginTop: 0.15,
 };
 
+// SPAWN/SPEED/PROB는 LEVELS가 있는 경우 세션 내 레벨 기준으로 덮어씀.
+// (기존 상수는 폴백/참고용)
 export const SPAWN = {
-  intervalStart: 0.42,
-  intervalEnd: 0.17,
+  intervalStart: 0.38,
+  intervalEnd: 0.13,
 };
 
 export const SPEED = {
-  start: 260,
-  end: 460,
+  start: 340,
+  end: 640,
 };
 
 export const PROB = {
   rare: 0.12,
-  bombStart: 0.08,
-  bombEnd: 0.16,
+  bombStart: 0.06,
+  bombEnd: 0.18,
 };
+
+// 세션 중 레벨 진행. `at`(초)에 진입, 해당 시점부터 아래 설정 적용.
+// 40초 세션을 5단계로 쪼개 점점 긴박해지게.
+export const LEVELS = [
+  { at:  0, label: 'LVL 1', speed: 340, spawn: 0.38, bomb: 0.06 },
+  { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09 },
+  { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
+  { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
+  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
+];
 
 export const COMBO = {
   windowMs: 720,
