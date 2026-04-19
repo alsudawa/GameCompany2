@@ -2,6 +2,7 @@
 
 import { Storage } from '../../../../shared/storage.js';
 import { Audio } from '../../../../shared/audio.js';
+import { Juice } from '../../../../shared/juice.js';
 import { COLORS } from '../config.js';
 
 export class MenuScene extends Phaser.Scene {
@@ -54,8 +55,10 @@ export class MenuScene extends Phaser.Scene {
 
     // START 버튼
     this.makeButton(width / 2, height * 0.56, 260, 72, 'START', COLORS.cyan, () => {
-      Audio.tap();
-      this.scene.start('GameScene');
+      Audio.rare();
+      Juice.flash(this, COLORS.cyan, 180);
+      Juice.ring(this, width / 2, height * 0.56, { color: COLORS.cyan, radius: 260, count: 2 });
+      this.time.delayedCall(160, () => this.scene.start('GameScene'));
     });
 
     // SHOP 버튼

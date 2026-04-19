@@ -1,4 +1,11 @@
-// GameScene — 실제 플레이 루프.
+// GameScene — 실제 플레이 루프. v2 "도파민 패스".
+// 추가 연출:
+//  - 맥동하는 네온 배경 (콤보에 비례해 강해짐)
+//  - 콤보 등급 배너 (NICE!/GREAT!/AMAZING!/INSANE!/GOD LIKE!)
+//  - 스코어 마일스톤 팡파르 (중앙 큰 배너)
+//  - HUD 점수 카운트업 + 펀치
+//  - 포인터 트레일 + 탭 스파크
+//  - 콤보 진행 바 (우측)
 
 import { Orb, ORB_KIND } from '../entities/Orb.js';
 import { Juice } from '../../../../shared/juice.js';
@@ -6,58 +13,130 @@ import { Audio } from '../../../../shared/audio.js';
 import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import {
-  GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE, COLORS, SKIN_EFFECTS,
+  GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
+  COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
 } from '../config.js';
 
-const POOL_SIZE = 24;
+const POOL_SIZE = 32;
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
   create() {
-    this.cameras.main.setBackgroundColor('#0a0a14');
-    this.drawHudBg();
+    const { width, height } = this.scale;
+    this.cameras.main.setBackgroundColor('#05050c');
 
     const profile = Storage.load();
     this.skin = SKIN_EFFECTS[profile.equippedSkin] || SKIN_EFFECTS.default;
 
+    // 맥동 네온 배경
+    this.bgPulse = this.add.graphics().setDepth(-10);
+    this.bgIntensity = 0;
+
+    // 중앙 얕은 비네트 (바닥 네온)
+    this.bgBase = this.add.graphics().setDepth(-20);
+    this.drawBaseBg();
+
+    // 상태
     this.score = 0;
+    this.displayedScore = 0;
     this.combo = 0;
     this.bestCombo = 0;
     this.gemsEarned = 0;
+    this.tapsMade = 0;
     this.lastTapAt = 0;
     this.remaining = GAME.sessionSeconds;
     this.elapsed = 0;
     this.spawnTimer = 0;
     this.isPlaying = false;
+    this.reachedRanks = new Set();
+    this.reachedMilestones = new Set();
 
+    // 풀
     this.orbs = [];
     for (let i = 0; i < POOL_SIZE; i++) this.orbs.push(new Orb(this));
 
-    this.hudScore = this.add.text(20, 14, '0', {
-      fontSize: '42px', fontStyle: 'bold', color: '#00e5ff',
-      stroke: '#000', strokeThickness: 4,
-    });
-    this.hudTime = this.add.text(this.scale.width - 20, 14, '60', {
-      fontSize: '42px', fontStyle: 'bold', color: '#e8e8f0',
-      stroke: '#000', strokeThickness: 4,
-    }).setOrigin(1, 0);
-    this.hudCombo = this.add.text(this.scale.width / 2, 70, '', {
-      fontSize: '28px', fontStyle: 'bold', color: '#ff2bd6',
-      stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5);
+    // HUD
+    this.drawHudBg();
+    this.hudScore = this.add.text(20, 8, '0', {
+      fontFamily: 'Arial, sans-serif',
+      fontSize: '48px', fontStyle: 'bold', color: '#00e5ff',
+      stroke: '#000', strokeThickness: 5,
+    }).setDepth(200);
+
+    this.hudTime = this.add.text(width - 20, 8, String(GAME.sessionSeconds), {
+      fontSize: '46px', fontStyle: 'bold', color: '#e8e8f0',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(1, 0).setDepth(200);
+
+    this.hudCombo = this.add.text(width / 2, 70, '', {
+      fontSize: '30px', fontStyle: 'bold', color: '#ff2bd6',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(200);
+
+    // 콤보 진행 바 (우측 세로바)
+    this.comboBarBg = this.add.graphics().setDepth(200);
+    this.comboBar = this.add.graphics().setDepth(201);
+    this.drawComboBar();
 
     // 네온 콤보 테두리
     this.borderFx = this.add.graphics().setDepth(500);
     this.borderAlpha = 0;
 
-    // 포인터 입력
+    // 포인터 트레일 + 탭 스파크
+    Juice.attachPointerTrail(this, this.skin.color);
+    this.input.on('pointerdown', (pointer) => {
+      Juice.spark(this, pointer.x, pointer.y, this.skin.color, 22);
+    });
     this.input.on('gameobjectdown', (pointer, obj) => this.onOrbTap(obj));
 
-    // 카운트다운 후 시작
     this.startCountdown();
-
     this.events.once('shutdown', () => this.cleanup());
+  }
+
+  drawBaseBg() {
+    const { width, height } = this.scale;
+    const g = this.bgBase;
+    g.clear();
+    // 하단 네온 글로우 바
+    g.fillStyle(0x00e5ff, 0.04);
+    g.fillRect(0, height - 140, width, 140);
+    g.fillStyle(0xff2bd6, 0.03);
+    g.fillRect(0, height - 80, width, 80);
+    // 상단 얇은 라인
+    g.lineStyle(1, 0x00e5ff, 0.3);
+    g.strokeLineShape(new Phaser.Geom.Line(0, 64, width, 64));
+  }
+
+  drawHudBg() {
+    const { width } = this.scale;
+    const g = this.add.graphics().setDepth(100);
+    g.fillStyle(0x000000, 0.4);
+    g.fillRect(0, 0, width, 64);
+    g.lineStyle(1, 0x00e5ff, 0.5);
+    g.strokeLineShape(new Phaser.Geom.Line(0, 64, width, 64));
+  }
+
+  drawComboBar() {
+    const { width, height } = this.scale;
+    const barW = 10, barH = 180;
+    const x = width - 22, y = height / 2 - barH / 2;
+    this.comboBarBg.clear();
+    this.comboBarBg.fillStyle(0x1a1a2e, 0.7);
+    this.comboBarBg.fillRoundedRect(x, y, barW, barH, 5);
+    this.comboBarBg.lineStyle(1, 0x00e5ff, 0.3);
+    this.comboBarBg.strokeRoundedRect(x, y, barW, barH, 5);
+
+    this.comboBar.clear();
+    const ratio = Math.min(this.combo / 25, 1);
+    const fillH = barH * ratio;
+    if (fillH > 0) {
+      const color = this.combo >= 25 ? COLORS.red :
+                    this.combo >= 15 ? COLORS.magenta :
+                    this.combo >= 10 ? COLORS.gold : COLORS.cyan;
+      this.comboBar.fillStyle(color, 1);
+      this.comboBar.fillRoundedRect(x, y + (barH - fillH), barW, fillH, 5);
+    }
   }
 
   startCountdown() {
@@ -66,25 +145,28 @@ export class GameScene extends Phaser.Scene {
     const tick = () => {
       if (n > 0) {
         const t = this.add.text(center.x, center.y, String(n), {
-          fontSize: '120px', fontStyle: 'bold', color: '#00e5ff',
-          stroke: '#000', strokeThickness: 6,
+          fontSize: '140px', fontStyle: 'bold', color: '#00e5ff',
+          stroke: '#000', strokeThickness: 8,
         }).setOrigin(0.5).setDepth(999);
         this.tweens.add({
-          targets: t, scale: { from: 1.3, to: 0.6 }, alpha: 0,
+          targets: t, scale: { from: 1.4, to: 0.6 }, alpha: 0,
           duration: 700, onComplete: () => t.destroy(),
         });
+        Juice.ring(this, center.x, center.y, { color: COLORS.cyan, radius: 180, count: 1 });
         Audio.tap();
         n--;
         this.time.delayedCall(700, tick);
       } else {
         const go = this.add.text(center.x, center.y, 'GO!', {
-          fontSize: '110px', fontStyle: 'bold', color: '#ffd24a',
-          stroke: '#000', strokeThickness: 6,
+          fontSize: '130px', fontStyle: 'bold', color: '#ffd24a',
+          stroke: '#000', strokeThickness: 8,
         }).setOrigin(0.5).setDepth(999);
         this.tweens.add({
-          targets: go, scale: { from: 0.7, to: 1.6 }, alpha: 0,
-          duration: 550, onComplete: () => go.destroy(),
+          targets: go, scale: { from: 0.7, to: 1.8 }, alpha: 0,
+          duration: 600, onComplete: () => go.destroy(),
         });
+        Juice.ring(this, center.x, center.y, { color: COLORS.gold, radius: 260, count: 2, duration: 600 });
+        Juice.flash(this, COLORS.gold, 140);
         Audio.fanfare();
         this.isPlaying = true;
         Analytics.track('session_start');
@@ -99,9 +181,15 @@ export class GameScene extends Phaser.Scene {
     if (this.isPlaying) {
       this.elapsed += dt;
       this.remaining = Math.max(0, GAME.sessionSeconds - this.elapsed);
-      this.hudTime.setText(Math.ceil(this.remaining).toString());
+      const sec = Math.ceil(this.remaining);
+      this.hudTime.setText(String(sec));
+      // 마지막 5초 긴박감
+      if (sec <= 5 && sec > 0) {
+        this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
+      } else {
+        this.hudTime.setColor('#e8e8f0');
+      }
 
-      // 스폰 진행
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnOrb();
@@ -109,12 +197,9 @@ export class GameScene extends Phaser.Scene {
         this.spawnTimer = Phaser.Math.Linear(SPAWN.intervalStart, SPAWN.intervalEnd, p);
       }
 
-      if (this.remaining <= 0) {
-        this.endSession();
-      }
+      if (this.remaining <= 0) this.endSession();
     }
 
-    // 오브 업데이트
     for (const o of this.orbs) o.update(dt);
 
     // 콤보 윈도우 만료
@@ -122,16 +207,22 @@ export class GameScene extends Phaser.Scene {
       this.resetCombo();
     }
 
-    // 네온 테두리 페이드
+    // 네온 테두리 감쇠
     if (this.borderAlpha > 0) {
-      this.borderAlpha = Math.max(0, this.borderAlpha - dt * 0.6);
+      this.borderAlpha = Math.max(0, this.borderAlpha - dt * 0.5);
       this.drawBorder();
+    }
+
+    // 배경 강도 감쇠 (콤보 없을 때)
+    if (this.combo === 0 && this.bgIntensity > 0) {
+      this.bgIntensity = Math.max(0, this.bgIntensity - dt * 0.8);
+      this.drawBgPulse();
     }
   }
 
   spawnOrb() {
-    const { width, height } = this.scale;
-    const marginX = 60;
+    const { width } = this.scale;
+    const marginX = 64;
     const x = Phaser.Math.Between(marginX, width - marginX);
     const y = -40;
 
@@ -156,11 +247,12 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === ORB_KIND.BOMB) {
       Audio.bomb();
-      Juice.flash(this, 0xff4d6d, 180);
-      Juice.shake(this, 0.018, 220);
-      Juice.burst(this, obj.x, obj.y, { count: 14, color: COLORS.red });
-      Juice.popText(this, obj.x, obj.y - 20, 'COMBO BREAK', {
-        color: COLORS.red, size: 24,
+      Juice.flash(this, COLORS.red, 200);
+      Juice.shake(this, 0.022, 260);
+      Juice.burst(this, obj.x, obj.y, { count: 18, color: COLORS.red, speed: 320 });
+      Juice.ring(this, obj.x, obj.y, { color: COLORS.red, radius: 160, count: 2 });
+      Juice.popText(this, obj.x, obj.y - 20, 'BREAK!', {
+        color: COLORS.red, size: 32,
       });
       this.resetCombo();
       obj.pop();
@@ -173,50 +265,150 @@ export class GameScene extends Phaser.Scene {
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
     this.combo = inWindow ? this.combo + 1 : 1;
     this.lastTapAt = now;
+    this.tapsMade++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
 
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const mul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
     const gained = Math.round(base * mul);
+    const prevScore = this.score;
     this.score += gained;
-    this.hudScore.setText(this.score.toLocaleString());
 
-    // 시각/청각 피드백
+    // 점수 HUD 카운트업 + 펀치
+    Juice.countUp(this, this.hudScore, prevScore, this.score, 260);
+    Juice.punch(this, this.hudScore, 1.2, 160);
+
+    // 파티클·링·플래시
     const color = kind === ORB_KIND.RARE ? COLORS.gold : this.skin.color;
-    Juice.burst(this, obj.x, obj.y, { count: kind === ORB_KIND.RARE ? 16 : 10, color });
+    const burstCount = kind === ORB_KIND.RARE ? 20 : Math.min(10 + this.combo, 22);
+    Juice.burst(this, obj.x, obj.y, { count: burstCount, color, speed: 280 });
+    Juice.ring(this, obj.x, obj.y, {
+      color, radius: 80 + Math.min(this.combo * 4, 60),
+      count: this.combo >= 10 ? 2 : 1,
+    });
     Juice.popText(this, obj.x, obj.y - 10, `+${gained}`, {
-      color, size: kind === ORB_KIND.RARE ? 34 : 28,
+      color, size: kind === ORB_KIND.RARE ? 38 : 30 + Math.min(this.combo, 10),
     });
 
-    const shakeIntensity = Math.min(0.004 + this.combo * 0.0015, 0.015);
+    // 카메라 흔들림
+    const shakeIntensity = Math.min(0.005 + this.combo * 0.0015, 0.018);
     Juice.shake(this, shakeIntensity, 110);
+
+    // 배경 맥동 강도 UP
+    this.bgIntensity = Math.min(1, 0.15 + this.combo * 0.05);
+    this.drawBgPulse();
 
     if (kind === ORB_KIND.RARE) {
       Audio.rare();
-      Juice.flash(this, COLORS.gold, 180);
+      Juice.flash(this, COLORS.gold, 200);
       Juice.slowmo(this, 0.35, 180);
       this.gemsEarned += GEMS_PER_RARE;
-      Juice.popText(this, obj.x, obj.y - 50, `💎 +${GEMS_PER_RARE}`, {
-        color: COLORS.gold, size: 26, rise: 70, duration: 900,
+      Juice.popText(this, obj.x, obj.y - 60, `💎 +${GEMS_PER_RARE}`, {
+        color: COLORS.gold, size: 30, rise: 80, duration: 1000,
       });
     } else {
       Audio.tap();
       if (this.combo > 1) Audio.combo(this.combo);
     }
 
-    // 콤보 표시
+    // 콤보 HUD 갱신
     if (this.combo >= 2) {
       this.hudCombo.setText(`COMBO ×${mul.toFixed(2)}  ${this.combo}`);
-      this.hudCombo.setScale(1.2);
-      this.tweens.add({ targets: this.hudCombo, scale: 1, duration: 180, ease: 'Back.Out' });
+      Juice.punch(this, this.hudCombo, 1.3, 180);
     }
+
+    // 콤보 등급 배너
+    for (const rank of COMBO_RANKS) {
+      if (this.combo >= rank.at && !this.reachedRanks.has(rank.at)) {
+        this.reachedRanks.add(rank.at);
+        this.showRankBanner(rank);
+      }
+    }
+
+    // 마일스톤 체크
+    for (const m of SCORE_MILESTONES) {
+      if (this.score >= m && !this.reachedMilestones.has(m)) {
+        this.reachedMilestones.add(m);
+        this.showMilestone(m);
+      }
+    }
+
+    // 네온 테두리
     if (this.combo >= 10) {
       this.borderAlpha = 1;
       this.drawBorder();
     }
 
+    // 콤보 바 업데이트
+    this.drawComboBar();
+
     obj.pop();
     Analytics.track('tap', { kind, combo: this.combo, score: gained });
+  }
+
+  showRankBanner(rank) {
+    const { width, height } = this.scale;
+    Audio.rankup();
+    Juice.flash(this, rank.color, 160);
+
+    const t = this.add.text(width / 2, height * 0.45, rank.label, {
+      fontSize: '72px', fontStyle: 'bold',
+      color: '#' + rank.color.toString(16).padStart(6, '0'),
+      stroke: '#000', strokeThickness: 8,
+    }).setOrigin(0.5).setDepth(980).setScale(0.4).setAlpha(0).setAngle(-8);
+
+    this.tweens.add({
+      targets: t,
+      scale: { from: 0.4, to: 1.15 },
+      alpha: 1,
+      angle: 0,
+      duration: 220,
+      ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t,
+          alpha: 0,
+          scale: 1.6,
+          duration: 500,
+          delay: 350,
+          ease: 'Cubic.In',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+
+    // 축하 파티클 (좌우에서 샤워)
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(i * 80, () => {
+        Juice.burst(this, width * 0.2, height * 0.45, { count: 14, color: rank.color, speed: 340 });
+        Juice.burst(this, width * 0.8, height * 0.45, { count: 14, color: rank.color, speed: 340 });
+      });
+    }
+  }
+
+  showMilestone(score) {
+    const { width, height } = this.scale;
+    Audio.milestone();
+    Juice.flash(this, COLORS.gold, 180);
+    Juice.shake(this, 0.01, 220);
+
+    const t = this.add.text(width / 2, height * 0.3,
+      `🏁 ${score.toLocaleString()}!`, {
+      fontSize: '56px', fontStyle: 'bold', color: '#ffd24a',
+      stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(970).setAlpha(0).setScale(0.6);
+
+    this.tweens.add({
+      targets: t, alpha: 1, scale: 1.1, duration: 260, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, y: t.y - 40,
+          duration: 500, delay: 350,
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+    Juice.ring(this, width / 2, height * 0.3, { color: COLORS.gold, radius: 260, count: 3 });
   }
 
   resetCombo() {
@@ -224,13 +416,26 @@ export class GameScene extends Phaser.Scene {
     this.hudCombo.setText('');
     this.borderAlpha = 0;
     this.drawBorder();
+    this.drawComboBar();
   }
 
-  drawHudBg() {
-    const { width } = this.scale;
-    const g = this.add.graphics().setDepth(100);
-    g.fillStyle(0x000000, 0.35);
-    g.fillRect(0, 0, width, 64);
+  drawBgPulse() {
+    const { width, height } = this.scale;
+    const g = this.bgPulse;
+    g.clear();
+    if (this.bgIntensity <= 0) return;
+    const alpha = this.bgIntensity * 0.35;
+    const color = this.combo >= 25 ? COLORS.red :
+                  this.combo >= 15 ? COLORS.magenta :
+                  this.combo >= 10 ? COLORS.gold : this.skin.color;
+    // 세로 그라데이션 느낌 (위/아래 네온 오버레이)
+    g.fillStyle(color, alpha * 0.4);
+    g.fillRect(0, 64, width, height - 64);
+    // 상하 진한 밴드
+    g.fillStyle(color, alpha * 0.6);
+    g.fillRect(0, 64, width, 90);
+    g.fillStyle(color, alpha * 0.6);
+    g.fillRect(0, height - 100, width, 100);
   }
 
   drawBorder() {
@@ -238,19 +443,18 @@ export class GameScene extends Phaser.Scene {
     if (this.borderAlpha <= 0) return;
     const { width, height } = this.scale;
     const alpha = Math.min(1, this.borderAlpha);
-    this.borderFx.lineStyle(6, COLORS.magenta, alpha);
+    const color = this.combo >= 25 ? COLORS.red :
+                  this.combo >= 15 ? COLORS.magenta : COLORS.magenta;
+    this.borderFx.lineStyle(6, color, alpha);
     this.borderFx.strokeRect(3, 3, width - 6, height - 6);
-    this.borderFx.lineStyle(12, COLORS.magenta, alpha * 0.3);
-    this.borderFx.strokeRect(8, 8, width - 16, height - 16);
+    this.borderFx.lineStyle(16, color, alpha * 0.25);
+    this.borderFx.strokeRect(10, 10, width - 20, height - 20);
   }
 
   endSession() {
     this.isPlaying = false;
-
-    // 남은 오브 비활성
     for (const o of this.orbs) if (o.alive) o.deactivate();
 
-    // 보상 지급
     const coins = Math.floor(this.score / 100);
     Storage.addCoins(coins);
     Storage.addGems(this.gemsEarned);
@@ -261,7 +465,11 @@ export class GameScene extends Phaser.Scene {
       coins, gems: this.gemsEarned, isBest,
     });
 
-    this.time.delayedCall(400, () => {
+    // 최종 플래시
+    Juice.flash(this, COLORS.cyan, 200);
+    Juice.shake(this, 0.01, 220);
+
+    this.time.delayedCall(450, () => {
       this.scene.start('ResultScene', {
         score: this.score,
         bestCombo: this.bestCombo,
