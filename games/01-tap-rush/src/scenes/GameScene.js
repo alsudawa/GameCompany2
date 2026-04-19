@@ -531,8 +531,41 @@ export class GameScene extends Phaser.Scene {
 
   endSession() {
     this.isPlaying = false;
-    for (const o of this.orbs) if (o.alive) o.deactivate();
 
+    // 1) 남아있는 오브를 깔끔히 정리 — 터트리듯 수축 페이드아웃
+    const { width, height } = this.scale;
+    for (const o of this.orbs) {
+      if (!o.alive) continue;
+      o.alive = false; // 추가 입력 차단
+      this.tweens.add({
+        targets: o,
+        alpha: 0,
+        scale: 0.4,
+        duration: 280,
+        ease: 'Cubic.In',
+        onComplete: () => o.deactivate(),
+      });
+    }
+
+    // 2) 하단 시간 바 0 고정 + 중앙 TIME UP 배너
+    this.drawTimeBar(0);
+    this.hudCombo.setText('');
+
+    const banner = this.add.text(width / 2, height * 0.42, 'TIME UP', {
+      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+      color: '#00e5ff', stroke: '#000', strokeThickness: 7,
+    }).setOrigin(0.5).setDepth(980).setScale(0.5).setAlpha(0).setLetterSpacing(6);
+
+    this.tweens.add({
+      targets: banner, scale: 1, alpha: 1,
+      duration: 260, ease: 'Back.Out',
+    });
+
+    // 최종 플래시 & 흔들림
+    Juice.flash(this, COLORS.cyan, 220);
+    Juice.shake(this, 0.012, 240);
+
+    // 3) 보상 계산
     const coins = Math.floor(this.score / 100);
     Storage.addCoins(coins);
     Storage.addGems(this.gemsEarned);
@@ -543,11 +576,8 @@ export class GameScene extends Phaser.Scene {
       coins, gems: this.gemsEarned, isBest,
     });
 
-    // 최종 플래시
-    Juice.flash(this, COLORS.cyan, 200);
-    Juice.shake(this, 0.01, 220);
-
-    this.time.delayedCall(450, () => {
+    // 4) 결과 화면 전환 (오브 페이드아웃 완료 후)
+    this.time.delayedCall(900, () => {
       this.scene.start('ResultScene', {
         score: this.score,
         bestCombo: this.bestCombo,
