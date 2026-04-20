@@ -109,3 +109,83 @@ export const SKIN_EFFECTS = {
   neon:    { color: COLORS.magenta, particle: COLORS.magenta },
   galaxy:  { color: 0xb388ff, particle: COLORS.gold },
 };
+
+// 스테이지 — 각 스테이지는 40초 세션. 내부 5단계 LEVELS ramp는 공통으로 쓰고
+// 팔레트·BGM·스폰 배수(polarity)를 달리 해 무드/난이도 색깔을 낸다.
+// 사용자는 메뉴에서 스테이지를 골라 반복 플레이한다.
+export const STAGES = [
+  {
+    id: 'dawn',
+    label: '01',
+    name: 'NEON DAWN',
+    tagline: 'WARM UP · SINGLE TAPS',
+    bgm: 'stage_dawn',
+    palette: { normal: 0x00e5ff, rare: COLORS.gold, bomb: COLORS.red, accent: 0x7af2ff },
+    bgBase: 0x03111a,
+    bombMul: 0.55,
+    rareMul: 1.1,
+    speedMul: 0.92,
+    spawnMul: 1.08,
+    linkChance: 0.10,
+  },
+  {
+    id: 'pulse',
+    label: '02',
+    name: 'PULSE CITY',
+    tagline: 'ALTERNATING LANES',
+    bgm: 'stage_pulse',
+    palette: { normal: COLORS.magenta, rare: COLORS.gold, bomb: COLORS.red, accent: 0xff7ae5 },
+    bgBase: 0x14061a,
+    bombMul: 0.9,
+    rareMul: 1.0,
+    speedMul: 1.0,
+    spawnMul: 1.0,
+    linkChance: 0.18,
+  },
+  {
+    id: 'drive',
+    label: '03',
+    name: 'DOUBLE RUSH',
+    tagline: 'TWO THUMBS · LINK PAIRS',
+    bgm: 'stage_drive',
+    palette: { normal: 0xb388ff, rare: COLORS.gold, bomb: COLORS.red, accent: 0xd4b3ff },
+    bgBase: 0x0f0528,
+    bombMul: 1.0,
+    rareMul: 1.0,
+    speedMul: 1.06,
+    spawnMul: 0.95,
+    linkChance: 0.38,
+  },
+  {
+    id: 'storm',
+    label: '04',
+    name: 'BOMB STORM',
+    tagline: 'DODGE THE RED',
+    bgm: 'stage_storm',
+    palette: { normal: COLORS.red, rare: COLORS.gold, bomb: 0xff1a40, accent: 0xff9aa8 },
+    bgBase: 0x1a0408,
+    bombMul: 1.9,
+    rareMul: 0.7,
+    speedMul: 1.08,
+    spawnMul: 0.92,
+    linkChance: 0.14,
+  },
+  {
+    id: 'star',
+    label: '05',
+    name: 'STAR OCEAN',
+    tagline: 'RARE STORM · FINALE',
+    bgm: 'stage_star',
+    palette: { normal: 0xffffff, rare: COLORS.gold, bomb: COLORS.red, accent: 0xffe88a },
+    bgBase: 0x05081c,
+    bombMul: 0.75,
+    rareMul: 2.6,
+    speedMul: 1.02,
+    spawnMul: 0.98,
+    linkChance: 0.22,
+  },
+];
+
+export function getStage(id) {
+  return STAGES.find(s => s.id === id) ?? STAGES[0];
+}

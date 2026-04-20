@@ -17,6 +17,7 @@ export class ResultScene extends Phaser.Scene {
 
   init(data) {
     this.data_ = data || { score: 0, bestCombo: 0, coins: 0, gems: 0, isBest: false };
+    this.stageId = data?.stageId ?? null;
   }
 
   create() {
@@ -77,7 +78,7 @@ export class ResultScene extends Phaser.Scene {
     // 버튼 — RETRY / MENU
     this.makeButton(width / 2 - 90, height * 0.89, 160, 60, 'RETRY', 0x00e5ff, () => {
       Audio.tap();
-      this.scene.start('GameScene');
+      this.scene.start('GameScene', { stageId: this.stageId });
     });
     this.makeButton(width / 2 + 90, height * 0.89, 160, 60, 'MENU',  0x6b708f, () => {
       Audio.tap();

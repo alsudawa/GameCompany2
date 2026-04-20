@@ -87,10 +87,12 @@ export class Orb extends Phaser.GameObjects.Container {
     this.setActive(true).setVisible(true).setScale(0.6).setAlpha(0).setRotation(0);
 
     const r = RADIUS[kind] ?? RADIUS.normal;
+    // 스테이지 팔레트 우선. 씬에 stage가 없으면 (예: 프리뷰) 기본색으로 폴백.
+    const palette = this.scene.stage?.palette;
     const color =
-      kind === ORB_KIND.RARE ? COLORS.gold :
-      kind === ORB_KIND.BOMB ? COLORS.red :
-      COLORS.cyan;
+      kind === ORB_KIND.RARE ? (palette?.rare ?? COLORS.gold) :
+      kind === ORB_KIND.BOMB ? (palette?.bomb ?? COLORS.red) :
+      (palette?.normal ?? COLORS.cyan);
     this._color = color;
     this._radius = r;
 

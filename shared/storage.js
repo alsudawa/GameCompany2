@@ -90,4 +90,9 @@ export const Storage = {
     }
     return false;
   },
+
+  update(patch) {
+    const p = this.load();
+    this.save({ ...p, ...patch });
+  },
 };

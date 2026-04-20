@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -24,11 +24,18 @@ const POOL_SIZE = 32;
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
+  init(data) {
+    this.stage = getStage(data?.stageId);
+  }
+
   create() {
     const { width, height } = this.scale;
-    this.cameras.main.setBackgroundColor('#05050c');
+    // 스테이지 고유 배경색
+    const bgHex = '#' + this.stage.bgBase.toString(16).padStart(6, '0');
+    this.cameras.main.setBackgroundColor(bgHex);
 
     const profile = Storage.load();
+    // 장착 스킨 컬러는 유지하되, 스테이지 팔레트를 우선 쓰도록 오브에 전달한다.
     this.skin = SKIN_EFFECTS[profile.equippedSkin] || SKIN_EFFECTS.default;
 
     // 맥동 네온 배경
@@ -85,10 +92,10 @@ export class GameScene extends Phaser.Scene {
       color: '#e8ecf5',
     }).setOrigin(1, 0).setDepth(201).setLetterSpacing(1);
 
-    // 중앙 상단: LEVEL 배지
-    this.hudLevelLabel = this.add.text(width / 2, 18, 'LEVEL', {
+    // 중앙 상단: STAGE 이름 + 내부 LEVEL
+    this.hudLevelLabel = this.add.text(width / 2, 16, `STAGE ${this.stage.label} · ${this.stage.name}`, {
       fontFamily: FONT.mono, fontSize: '9px', fontStyle: '700',
-      color: '#6b708f',
+      color: '#' + this.stage.palette.normal.toString(16).padStart(6, '0'),
     }).setOrigin(0.5, 0).setDepth(201).setLetterSpacing(3);
     this.hudLevel = this.add.text(width / 2, 32, LEVELS[0].label, {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
@@ -446,7 +453,7 @@ export class GameScene extends Phaser.Scene {
         Juice.ring(this, center.x, center.y, { color: COLORS.gold, radius: 260, count: 2, duration: 600 });
         Juice.flash(this, COLORS.gold, 140);
         Audio.fanfare();
-        Audio.playBgm?.('play', { fadeIn: 0.6 });
+        Audio.playBgm?.(this.stage.bgm, { fadeIn: 0.6 });
         this.isPlaying = true;
         Analytics.track('session_start');
       }
@@ -476,7 +483,7 @@ export class GameScene extends Phaser.Scene {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnOrb();
-        this.spawnTimer = this.currentLevel.spawn;
+        this.spawnTimer = this.currentLevel.spawn * this.stage.spawnMul;
       }
 
       if (this.remaining <= 0) this.endSession();
@@ -549,18 +556,20 @@ export class GameScene extends Phaser.Scene {
     const mid = width / 2;
     const y = -40;
 
-    const speed = this.currentLevel.speed;
-    const bombProb = this.currentLevel.bomb;
+    // 스테이지 배수 적용: 속도/스폰 간격/폭탄·레어 확률 전부 스테이지 성격에 맞춤.
+    const speed = this.currentLevel.speed * this.stage.speedMul;
+    const bombProb = this.currentLevel.bomb * this.stage.bombMul;
+    const rareProb = PROB.rare * this.stage.rareMul;
 
     const roll = Math.random();
     let kind;
-    if (roll < PROB.rare) kind = ORB_KIND.RARE;
-    else if (roll < PROB.rare + bombProb) kind = ORB_KIND.BOMB;
+    if (roll < rareProb) kind = ORB_KIND.RARE;
+    else if (roll < rareProb + bombProb) kind = ORB_KIND.BOMB;
     else kind = ORB_KIND.NORMAL;
 
-    // LINK 쌍: LVL2 이후 일반 오브의 22% 확률. 항상 좌/우로 분리
+    // LINK 쌍: LVL2 이후 일반 오브에서 스테이지별 확률로 대체. 항상 좌/우 분리
     // → 양엄지를 각각 한 손씩 쓰도록 유도한다.
-    if (kind === ORB_KIND.NORMAL && this.levelIdx >= 1 && Math.random() < 0.22) {
+    if (kind === ORB_KIND.NORMAL && this.levelIdx >= 1 && Math.random() < this.stage.linkChance) {
       const a = this.orbs.find(o => !o.alive);
       const b = a ? this.orbs.find(o => !o.alive && o !== a) : null;
       if (a && b) {
@@ -874,6 +883,7 @@ export class GameScene extends Phaser.Scene {
         coins,
         gems: this.gemsEarned,
         isBest,
+        stageId: this.stage.id,
       });
     });
   }
