@@ -71,23 +71,25 @@ export const GRADE_CUTS = {
 
 // 타이밍 판정 — 화면 중하단에 "TAP ZONE" 라인.
 // 오브 중심이 라인에 가까울수록 높은 등급.
+// 'good' 바깥을 탭하면 아예 무효(EARLY/LATE) — 오브는 계속 낙하.
 export const JUDGMENT = {
   lineYRatio: 0.72,
   perfect: 22,   // 이 범위 안 → PERFECT
   great:   50,   // PERFECT 바깥, 이 범위 안 → GREAT
-  good:    100,  // 이 범위 안 → GOOD, 그 바깥 → BAD
-  perfectMul: 1.6,
-  greatMul:   1.25,
+  good:    110,  // 이 범위 안 → GOOD, 바깥은 탭 무효
+  perfectMul: 1.7,
+  greatMul:   1.3,
   goodMul:    1.0,
-  badMul:     0.5,
 };
 
 export const JUDGMENT_COLORS = {
   PERFECT: 0xffd24a,
   GREAT:   0x00e5ff,
   GOOD:    0xb388ff,
-  BAD:     0x8a8aa8,
+  EARLY:   0x8a8aa8,
+  LATE:    0x8a8aa8,
   MISS:    0xff4d6d,
+  LINK:    0xff2bd6,
 };
 
 export const COLORS = {

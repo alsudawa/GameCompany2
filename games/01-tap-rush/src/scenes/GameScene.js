@@ -124,14 +124,13 @@ export class GameScene extends Phaser.Scene {
     // 포인터 트레일 + 탭 스파크
     Juice.attachPointerTrail(this, this.skin.color);
 
-    // 수동 hit test — 겹친 오브 중 가장 가까운 것을 선택.
-    // 탭 지점에 스파크는 항상, 오브가 근처에 있으면 그 오브를 탭 처리.
+    // 수동 hit test — TAP ZONE 안의 오브만 유효.
+    // 존 바깥 오브는 EARLY/LATE 피드백만 표시하고 소모하지 않음.
+    // (폭탄은 어디서 탭해도 벌칙 — 누르지 말아야 하니까)
     this.input.on('pointerdown', (pointer) => {
       if (!this.isPlaying) return;
       Juice.spark(this, pointer.x, pointer.y, this.skin.color, 22);
 
-      // 후보 탐색: 살아있고, 포인터와 거리가 (hitRadius + 보너스) 이내
-      // 보너스는 "near miss"까지 관대하게 잡아주는 슬랙.
       const GRACE = 18;
       let best = null;
       let bestDist = Infinity;
@@ -146,7 +145,23 @@ export class GameScene extends Phaser.Scene {
           best = o;
         }
       }
-      if (best) this.onOrbTap(best);
+      if (!best) return;
+
+      // 폭탄은 존 상관없이 항상 반응 (탭=실수이므로 즉시 벌칙)
+      if (best.kind === ORB_KIND.BOMB) {
+        this.onOrbTap(best);
+        return;
+      }
+
+      // TAP ZONE 바깥 → 무효 (오브는 계속 낙하, 피드백만 표시)
+      const dyZone = best.y - this.judgmentY;
+      if (Math.abs(dyZone) > JUDGMENT.good) {
+        const label = dyZone < 0 ? 'EARLY' : 'LATE';
+        this.showJudgmentFeedback(label, best.x, best.y);
+        return;
+      }
+
+      this.onOrbTap(best);
     });
 
     this.startCountdown();
@@ -251,17 +266,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   judgeOrb(orb) {
+    // 이 함수 호출 시점엔 이미 TAP ZONE 내부가 보장됨 (|dy| <= JUDGMENT.good).
     const dy = Math.abs(orb.y - this.judgmentY);
     if (dy <= JUDGMENT.perfect) return { tier: 'PERFECT', mul: JUDGMENT.perfectMul };
     if (dy <= JUDGMENT.great)   return { tier: 'GREAT',   mul: JUDGMENT.greatMul };
-    if (dy <= JUDGMENT.good)    return { tier: 'GOOD',    mul: JUDGMENT.goodMul };
-    return                             { tier: 'BAD',     mul: JUDGMENT.badMul };
+    return                             { tier: 'GOOD',    mul: JUDGMENT.goodMul };
   }
 
   showJudgmentFeedback(tier, x, y) {
-    const color = JUDGMENT_COLORS[tier];
+    const color = JUDGMENT_COLORS[tier] ?? 0x8a8aa8;
     const hex = '#' + color.toString(16).padStart(6, '0');
-    const size = tier === 'PERFECT' ? 30 : tier === 'GREAT' ? 26 : tier === 'GOOD' ? 22 : 18;
+    const sizeMap = {
+      PERFECT: 32, GREAT: 28, GOOD: 22,
+      EARLY: 16, LATE: 16, MISS: 20, LINK: 30,
+    };
+    const size = sizeMap[tier] ?? 20;
     const t = this.add.text(x, y - 44, tier, {
       fontFamily: FONT.display, fontSize: `${size}px`, fontStyle: '900',
       color: hex, stroke: '#000', strokeThickness: 4,
@@ -476,14 +495,9 @@ export class GameScene extends Phaser.Scene {
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
 
-    // BAD 이하는 콤보를 깨지는 않지만 축적도 안 됨 (1로 고정 시작)
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
-    if (judge.tier === 'BAD') {
-      this.combo = 1;
-    } else {
-      this.combo = inWindow ? this.combo + 1 : 1;
-    }
+    this.combo = inWindow ? this.combo + 1 : 1;
     this.lastTapAt = now;
     this.tapsMade++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
