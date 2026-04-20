@@ -163,43 +163,25 @@ export class Orb extends Phaser.GameObjects.Container {
     // 본체
     this.body.clear();
     if (isBomb) {
-      // 본체는 어두운 레드 + 대각선 위험 스트라이프
-      this.body.fillStyle(0x2a0008, 1);
+      // 동심 경고 밴드로 구성 — 원 내부에만 그려 옆 오브를 가리지 않는다.
+      // (이전의 "도넛 마스크" 트릭은 반경 6r짜리 검은 링을 그려 인접 오브를 덮었음)
+      this.body.fillStyle(0x1f0008, 1);
       this.body.fillCircle(0, 0, r);
-
-      // 대각선 줄무늬 (caution tape) — 클리핑은 원에 대해 수동 체크
-      this.body.fillStyle(0xff0030, 1);
-      const stripeWidth = 8;
-      for (let i = -r * 2; i < r * 2; i += stripeWidth * 2) {
-        // 대각선 바 형태의 경로 — 사다리꼴 4점
-        const pts = [
-          { x: i,               y: -r - 2 },
-          { x: i + stripeWidth, y: -r - 2 },
-          { x: i + stripeWidth - r * 2, y:  r + 2 },
-          { x: i - r * 2,       y:  r + 2 },
-        ];
-        // 간단한 fillPoints 사용
-        if (this.body.fillPoints) {
-          this.body.fillPoints(pts, true, true);
-        }
-      }
-      // 원형 마스크 흉내 — 원 외부 영역 덮기 (투명한 링)
-      // 다시 어두운 배경 링을 위로 얹어 스트라이프를 원 안에만 남김
-      this.body.fillStyle(0x05050c, 1);
-      this.body.beginPath();
-      this.body.arc(0, 0, r * 6, 0, Math.PI * 2, false);
-      this.body.arc(0, 0, r, 0, Math.PI * 2, true);
-      this.body.closePath();
-      this.body.fillPath();
+      this.body.fillStyle(0xff0030, 0.55);
+      this.body.fillCircle(0, 0, r * 0.88);
+      this.body.fillStyle(0x1f0008, 1);
+      this.body.fillCircle(0, 0, r * 0.74);
+      this.body.fillStyle(0xff0030, 0.7);
+      this.body.fillCircle(0, 0, r * 0.60);
 
       // 중앙 블랙 원판 — 아이콘 대비 강조
-      this.body.fillStyle(0x05050c, 0.9);
-      this.body.fillCircle(0, 0, r * 0.55);
-      this.body.lineStyle(2, 0xff0030, 1);
-      this.body.strokeCircle(0, 0, r * 0.55);
+      this.body.fillStyle(0x05050c, 0.95);
+      this.body.fillCircle(0, 0, r * 0.48);
+      this.body.lineStyle(1.5, 0xff0030, 1);
+      this.body.strokeCircle(0, 0, r * 0.48);
 
       // 외곽 링 (튼튼한 테두리)
-      this.body.lineStyle(2, 0xffffff, 0.9);
+      this.body.lineStyle(2, 0xffffff, 0.95);
       this.body.strokeCircle(0, 0, r);
     } else {
       // 일반/레어
