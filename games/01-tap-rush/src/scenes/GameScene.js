@@ -287,6 +287,14 @@ export class GameScene extends Phaser.Scene {
       EARLY: 16, LATE: 16, MISS: 20, LINK: 30,
     };
     const size = sizeMap[tier] ?? 20;
+
+    // 판정별 SFX (짧은 톤, Audio.tap()/rare()와 중첩되어 타격+화성 느낌)
+    if (tier === 'PERFECT') Audio.perfect?.();
+    else if (tier === 'GREAT') Audio.great?.();
+    else if (tier === 'GOOD') Audio.good?.();
+    else if (tier === 'EARLY') Audio.early?.();
+    else if (tier === 'LATE') Audio.late?.();
+    else if (tier === 'MISS') Audio.miss?.();
     const t = this.add.text(x, y - 44, tier, {
       fontFamily: FONT.display, fontSize: `${size}px`, fontStyle: '900',
       color: hex, stroke: '#000', strokeThickness: 4,
@@ -362,7 +370,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    Audio.rankup();
+    Audio.linkBonus?.();
     Juice.shake(this, 0.012, 180);
   }
 
@@ -426,6 +434,7 @@ export class GameScene extends Phaser.Scene {
         Juice.ring(this, center.x, center.y, { color: COLORS.gold, radius: 260, count: 2, duration: 600 });
         Juice.flash(this, COLORS.gold, 140);
         Audio.fanfare();
+        Audio.playBgm?.('play', { fadeIn: 0.6 });
         this.isPlaying = true;
         Analytics.track('session_start');
       }
@@ -498,7 +507,7 @@ export class GameScene extends Phaser.Scene {
 
   showLevelBanner(lvl) {
     const { width, height } = this.scale;
-    Audio.rankup();
+    Audio.levelUp?.();
     Juice.flash(this, COLORS.gold, 160);
     Juice.punch(this, this.hudLevel, 1.5, 220);
 
@@ -791,6 +800,7 @@ export class GameScene extends Phaser.Scene {
 
   endSession() {
     this.isPlaying = false;
+    Audio.stopBgm?.({ fadeOut: 0.4 });
 
     // 1) 남아있는 오브를 깔끔히 정리 — 터트리듯 수축 페이드아웃
     const { width, height } = this.scale;

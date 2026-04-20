@@ -14,6 +14,8 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#05050c');
 
     Audio.unlockOnFirstInput(this);
+    // 메뉴 BGM — 잔잔한 A 마이너 루프 (유저 제스처 직후 자동 시작)
+    Audio.playBgm?.('menu', { fadeIn: 0.6 });
 
     // 배경 레이어
     UI.drawGrid(this, width, height, { cell: 40, color: 0x0f1530, alpha: 0.45, depth: -25 });
@@ -74,6 +76,7 @@ export class MenuScene extends Phaser.Scene {
     // 메인 버튼 — 와이드 START
     this.makeHexButton(width / 2, height * 0.60, 280, 80, 'START', 0x00e5ff, () => {
       Audio.rare();
+      Audio.stopBgm?.({ fadeOut: 0.25 });
       Juice.flash(this, COLORS.cyan, 180);
       Juice.ring(this, width / 2, height * 0.60, { color: COLORS.cyan, radius: 280, count: 2 });
       this.time.delayedCall(160, () => this.scene.start('GameScene'));
@@ -82,6 +85,7 @@ export class MenuScene extends Phaser.Scene {
     // 서브 버튼 행
     this.makeSubButton(width * 0.3, height * 0.74, 130, 56, 'SHOP',    0xff2bd6, () => {
       Audio.tap();
+      Audio.stopBgm?.({ fadeOut: 0.25 });
       this.scene.start('ShopScene');
     });
     this.makeSubButton(width * 0.7, height * 0.74, 130, 56, 'INFO',    0x6b708f, () => {
