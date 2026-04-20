@@ -279,12 +279,14 @@ export class GameScene extends Phaser.Scene {
     return                             { tier: 'GOOD',    mul: JUDGMENT.goodMul };
   }
 
-  showJudgmentFeedback(tier, x, y) {
+  showJudgmentFeedback(tier /*, x, y */) {
+    // 판정 텍스트는 오브가 아니라 TAP ZONE 라인 바로 아래 고정 위치에 띄운다.
+    // 오브 위에 튀어오르면 시야가 가려져 다음 오브가 "순간이동"한 듯 보이는 착시가 난다.
     const color = JUDGMENT_COLORS[tier] ?? 0x8a8aa8;
     const hex = '#' + color.toString(16).padStart(6, '0');
     const sizeMap = {
-      PERFECT: 32, GREAT: 28, GOOD: 22,
-      EARLY: 16, LATE: 16, MISS: 20, LINK: 30,
+      PERFECT: 30, GREAT: 26, GOOD: 22,
+      EARLY: 16, LATE: 16, MISS: 20, LINK: 28,
     };
     const size = sizeMap[tier] ?? 20;
 
@@ -295,18 +297,22 @@ export class GameScene extends Phaser.Scene {
     else if (tier === 'EARLY') Audio.early?.();
     else if (tier === 'LATE') Audio.late?.();
     else if (tier === 'MISS') Audio.miss?.();
-    const t = this.add.text(x, y - 44, tier, {
+
+    const { width } = this.scale;
+    const x = width / 2;
+    const y = this.judgmentY + 36;
+    const t = this.add.text(x, y, tier, {
       fontFamily: FONT.display, fontSize: `${size}px`, fontStyle: '900',
       color: hex, stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(950).setLetterSpacing(3).setScale(0.5).setAlpha(0);
+    }).setOrigin(0.5).setDepth(950).setLetterSpacing(3).setScale(0.6).setAlpha(0);
 
     this.tweens.add({
-      targets: t, scale: 1.1, alpha: 1,
-      duration: 160, ease: 'Back.Out',
+      targets: t, scale: 1, alpha: 1,
+      duration: 120, ease: 'Back.Out',
       onComplete: () => {
         this.tweens.add({
-          targets: t, alpha: 0, y: t.y - 24,
-          duration: 420, delay: 220, ease: 'Cubic.Out',
+          targets: t, alpha: 0, y: t.y + 12,
+          duration: 320, delay: 140, ease: 'Cubic.Out',
           onComplete: () => t.destroy(),
         });
       },
@@ -608,26 +614,22 @@ export class GameScene extends Phaser.Scene {
     Juice.countUp(this, this.hudScore, prevScore, this.score, 260);
     Juice.punch(this, this.hudScore, 1.2, 160);
 
-    // 파티클·링·플래시
+    // 파티클·링·플래시 — 오브 자리에 너무 많이 쌓이지 않도록 절제.
+    // 점수 팝업은 오브 위로 충분히 띄워 다음 오브와 겹치지 않게.
     const color = kind === ORB_KIND.RARE ? COLORS.gold : this.skin.color;
-    const burstCount = kind === ORB_KIND.RARE ? 20 : Math.min(10 + this.combo, 22);
-    Juice.burst(this, obj.x, obj.y, { count: burstCount, color, speed: 280 });
+    const burstCount = kind === ORB_KIND.RARE ? 16 : Math.min(6 + Math.floor(this.combo / 2), 14);
+    Juice.burst(this, obj.x, obj.y, { count: burstCount, color, speed: 240 });
     Juice.ring(this, obj.x, obj.y, {
-      color, radius: 80 + Math.min(this.combo * 4, 60),
-      count: this.combo >= 10 ? 2 : 1,
+      color, radius: 60 + Math.min(this.combo * 3, 40),
+      count: 1,
     });
-    Juice.popText(this, obj.x, obj.y - 10, `+${gained}`, {
-      color, size: kind === ORB_KIND.RARE ? 38 : 30 + Math.min(this.combo, 10),
+    Juice.popText(this, obj.x, obj.y - 60, `+${gained}`, {
+      color, size: kind === ORB_KIND.RARE ? 32 : 24 + Math.min(this.combo, 8),
     });
 
-    // 카메라 흔들림 — 평범한 탭에서는 생략. (매 탭마다 흔들면 오브가
-    // 순간 빨라진 듯한 착시가 생긴다.) 콤보가 충분히 쌓였거나 레어일 때만.
-    if (kind === ORB_KIND.RARE) {
-      Juice.shake(this, 0.008, 140);
-    } else if (this.combo >= 10) {
-      const shakeIntensity = Math.min(0.004 + (this.combo - 10) * 0.0008, 0.012);
-      Juice.shake(this, shakeIntensity, 90);
-    }
+    // 카메라 흔들림은 탭 피드백에서 완전히 제거.
+    // (흔들면 오브 위치가 프레임마다 변해 "빨라진 듯한" 착시가 생긴다.)
+    // 폭탄처럼 "실수/이벤트"에서만 흔들림을 쓴다. 콤보/레어는 링·테두리로만 보강.
 
     // 배경 맥동 강도 UP
     this.bgIntensity = Math.min(1, 0.15 + this.combo * 0.05);
