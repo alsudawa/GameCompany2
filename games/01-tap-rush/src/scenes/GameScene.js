@@ -611,9 +611,14 @@ export class GameScene extends Phaser.Scene {
       color, size: kind === ORB_KIND.RARE ? 38 : 30 + Math.min(this.combo, 10),
     });
 
-    // 카메라 흔들림
-    const shakeIntensity = Math.min(0.005 + this.combo * 0.0015, 0.018);
-    Juice.shake(this, shakeIntensity, 110);
+    // 카메라 흔들림 — 평범한 탭에서는 생략. (매 탭마다 흔들면 오브가
+    // 순간 빨라진 듯한 착시가 생긴다.) 콤보가 충분히 쌓였거나 레어일 때만.
+    if (kind === ORB_KIND.RARE) {
+      Juice.shake(this, 0.008, 140);
+    } else if (this.combo >= 10) {
+      const shakeIntensity = Math.min(0.004 + (this.combo - 10) * 0.0008, 0.012);
+      Juice.shake(this, shakeIntensity, 90);
+    }
 
     // 배경 맥동 강도 UP
     this.bgIntensity = Math.min(1, 0.15 + this.combo * 0.05);
