@@ -123,26 +123,137 @@ const BGM_TRACKS = {};
   BGM_TRACKS.menu = { loopSec: beat * 8, notes };
 }
 {
-  // PLAY — A 마이너, 132 BPM, 8박 루프 (더 긴박)
+  // PLAY — A 마이너, 132 BPM, 8박 루프 (기본 플레이 트랙, 폴백용)
   const beat = 60 / 132;
   const notes = [];
-  // 베이스 8분 패턴 (A A E A  G G A E | A A E A  G G A E)
   const bassSeq = [110, 110, 82.41, 110, 98, 98, 110, 82.41,
                    110, 110, 82.41, 110, 98, 98, 110, 82.41];
   const ex = beat / 2;
   for (let i = 0; i < bassSeq.length; i++) {
     notes.push({ t: i * ex, freq: bassSeq[i], dur: 0.14, type: 'triangle', gain: 0.07 });
   }
-  // 리드 아르페지오 8분 (A 마이너 펜타토닉 상승 후 하강)
   const lead = [440, 523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 523.25];
   for (let i = 0; i < 16; i++) {
     notes.push({ t: i * ex, freq: lead[i % lead.length], dur: 0.13, type: 'sine', gain: 0.03 });
   }
-  // 킥 느낌 — 매 박자 저음 버스트
   for (let i = 0; i < 8; i++) {
     notes.push({ t: i * beat, freq: 90, dur: 0.08, type: 'sine', gain: 0.055, sweepTo: 45 });
   }
   BGM_TRACKS.play = { loopSec: beat * 8, notes };
+}
+
+// ───────── 스테이지별 BGM ─────────
+// 설계 원칙: 공통 A 마이너 기조 + 서로 다른 BPM/악기 밀도/리드 패턴으로 무드 분리.
+// 스테이지 성격과 매칭: DAWN(느긋), PULSE(교차), DRIVE(빠름), STORM(긴장), STAR(웅장).
+
+{
+  // STAGE 01 — NEON DAWN · A minor, 88 BPM, 잔잔한 패드 + 가벼운 아르페지오
+  const beat = 60 / 88;
+  const notes = [];
+  // 저음 패드 (A2, E2) — 4박씩 지속
+  [[0, 110], [4 * beat, 82.41]].forEach(([t, f]) => {
+    notes.push({ t, freq: f, dur: beat * 4, type: 'sine', gain: 0.028 });
+  });
+  // 패드 상부 3화음 (Am)
+  [220, 261.63, 329.63].forEach((f, i) =>
+    notes.push({ t: 0, freq: f, dur: beat * 8, type: 'sine', gain: 0.018 - i * 0.002 }));
+  // 잔잔한 8분 아르페지오 — A C E G  E C A E
+  const arp = [220, 261.63, 329.63, 392, 329.63, 261.63, 220, 329.63];
+  const ex = beat / 2;
+  for (let i = 0; i < arp.length * 2; i++) {
+    notes.push({ t: i * ex, freq: arp[i % arp.length], dur: 0.22, type: 'triangle', gain: 0.024 });
+  }
+  BGM_TRACKS.stage_dawn = { loopSec: beat * 8, notes };
+}
+
+{
+  // STAGE 02 — PULSE CITY · A minor, 118 BPM, 좌/우 교차 베이스 + 신스 리드
+  const beat = 60 / 118;
+  const notes = [];
+  // 교차 베이스 8분 (L R L R …) — A / E / A / E …
+  const bassSeq = [110, 82.41, 110, 82.41, 98, 73.42, 98, 73.42,
+                   110, 82.41, 110, 82.41, 98, 73.42, 98, 73.42];
+  const ex = beat / 2;
+  for (let i = 0; i < bassSeq.length; i++) {
+    notes.push({ t: i * ex, freq: bassSeq[i], dur: 0.12, type: 'sawtooth', gain: 0.055 });
+  }
+  // 신스 리드 — 4분 (A4 C5 E5 D5)
+  const lead = [440, 523.25, 659.25, 587.33];
+  for (let i = 0; i < 8; i++) {
+    notes.push({ t: i * beat, freq: lead[i % lead.length], dur: 0.32, type: 'triangle', gain: 0.038 });
+  }
+  // 스냅 — 2박/4박에 짧은 고음 퍼커시브 틱
+  for (let i = 1; i < 8; i += 2) {
+    notes.push({ t: i * beat, freq: 2200, dur: 0.03, type: 'square', gain: 0.02 });
+  }
+  BGM_TRACKS.stage_pulse = { loopSec: beat * 8, notes };
+}
+
+{
+  // STAGE 03 — DOUBLE RUSH · A minor, 140 BPM, 쿵쿵 드라이빙 베이스 + 상행 리드
+  const beat = 60 / 140;
+  const notes = [];
+  // 베이스 8분 8연타 (A E A E A E A E  G D G D G D G D)
+  const bassSeq = [110, 82.41, 110, 82.41, 110, 82.41, 110, 82.41,
+                    98, 73.42,  98, 73.42,  98, 73.42,  98, 73.42];
+  const ex = beat / 2;
+  for (let i = 0; i < bassSeq.length; i++) {
+    notes.push({ t: i * ex, freq: bassSeq[i], dur: 0.09, type: 'triangle', gain: 0.075 });
+  }
+  // 상행 16분 리드 — 펜타토닉 달리기
+  const lead = [440, 523.25, 659.25, 783.99, 880, 783.99, 659.25, 523.25];
+  const sx = beat / 4;
+  for (let i = 0; i < 32; i++) {
+    notes.push({ t: i * sx, freq: lead[i % lead.length], dur: 0.1, type: 'sine', gain: 0.032 });
+  }
+  // 킥 매 박자
+  for (let i = 0; i < 8; i++) {
+    notes.push({ t: i * beat, freq: 95, dur: 0.08, type: 'sine', gain: 0.06, sweepTo: 45 });
+  }
+  BGM_TRACKS.stage_drive = { loopSec: beat * 8, notes };
+}
+
+{
+  // STAGE 04 — BOMB STORM · A minor, 126 BPM, 낮은 그루밍 베이스 + 불안한 트라이톤 스팅
+  const beat = 60 / 126;
+  const notes = [];
+  // 다운튜닝 베이스 4분 (A1 A1 Eb2 A1) — Eb2로 트라이톤 느낌
+  const bass = [55, 55, 77.78, 55];
+  for (let i = 0; i < bass.length * 2; i++) {
+    const f = bass[i % bass.length];
+    notes.push({ t: i * beat, freq: f, dur: 0.35, type: 'sawtooth', gain: 0.08, sweepTo: Math.max(42, f * 0.78) });
+  }
+  // 불안 스팅 — 반박자마다 짧은 고음 트릴 (A5 → Eb5 트라이톤)
+  const sting = [880, 622.25];
+  for (let i = 0; i < 16; i++) {
+    notes.push({ t: i * (beat / 2), freq: sting[i % sting.length], dur: 0.06, type: 'square', gain: 0.022 });
+  }
+  // 저주파 쿵 (비트 3·7)
+  [2, 6].forEach(b => {
+    notes.push({ t: b * beat, freq: 70, dur: 0.22, type: 'sine', gain: 0.08, sweepTo: 35 });
+  });
+  BGM_TRACKS.stage_storm = { loopSec: beat * 8, notes };
+}
+
+{
+  // STAGE 05 — STAR OCEAN · A minor, 108 BPM, 웅장한 지속 패드 + 반짝이는 고음 카스케이드
+  const beat = 60 / 108;
+  const notes = [];
+  // 지속 패드 (Am add9: A C E B) — 길게
+  [110, 261.63, 329.63, 493.88].forEach((f, i) =>
+    notes.push({ t: 0, freq: f, dur: beat * 8, type: 'sine', gain: 0.03 - i * 0.004 }));
+  // 4박마다 부드러운 저음 펄스
+  for (let i = 0; i < 8; i++) {
+    notes.push({ t: i * beat, freq: 82.41, dur: 0.5, type: 'triangle', gain: 0.035 });
+  }
+  // 고음 반짝 카스케이드 — 16분 상행 후 폭포
+  const sparkle = [1046.5, 1318.5, 1568, 1760, 2093, 1760, 1568, 1318.5];
+  const sx = beat / 4;
+  for (let i = 0; i < 32; i++) {
+    const f = sparkle[i % sparkle.length];
+    notes.push({ t: i * sx + (beat * 2), freq: f, dur: 0.14, type: 'sine', gain: 0.025 });
+  }
+  BGM_TRACKS.stage_star = { loopSec: beat * 8, notes };
 }
 
 // BGM 재생 상태
