@@ -66,6 +66,10 @@ export class Orb extends Phaser.GameObjects.Container {
     this._shimmerAngle = 0;
     this._trailTimer = 0;
 
+    // LINK 쌍 (동시 탭) 관련 필드. 리셋마다 초기화.
+    this.linkPartner = null;
+    this.linkTappedAt = 0;
+
     this.setVisible(false).setActive(false);
   }
 
@@ -78,6 +82,8 @@ export class Orb extends Phaser.GameObjects.Container {
     this._shimmerAngle = Math.random() * Math.PI * 2;
     this._trailTimer = 0;
     this.spawnTime = this.scene.time.now;
+    this.linkPartner = null;
+    this.linkTappedAt = 0;
     this.setActive(true).setVisible(true).setScale(0.6).setAlpha(0).setRotation(0);
 
     const r = RADIUS[kind] ?? RADIUS.normal;
@@ -299,6 +305,8 @@ export class Orb extends Phaser.GameObjects.Container {
     if (this.alive && this.kind !== ORB_KIND.BOMB && this.scene && this.scene.events) {
       this.scene.events.emit('orbMissed', this);
     }
+    // 링크 파트너 참조는 여기서 정리하지 않음 — 탭 후 pop 페이드 동안
+    // 파트너 쪽 2nd 탭이 늦게 들어올 수 있으니 reset()에서만 정리한다.
     this.alive = false;
     this.setActive(false).setVisible(false);
     this.setPosition(-200, -200);

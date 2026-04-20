@@ -118,8 +118,14 @@ export class GameScene extends Phaser.Scene {
     this.judgmentY = Math.round(height * JUDGMENT.lineYRatio);
     this.drawJudgmentZone();
 
+    // LINK 쌍의 연결선용 그래픽 (오브 뒤, 판정선 위)
+    this.linkLines = this.add.graphics().setDepth(-4);
+
     // 오브 낙하 놓침(fall-through) → MISS 처리
     this.events.on('orbMissed', (orb) => this.onOrbMiss(orb));
+
+    // 멀티터치 (LINK 동시 탭 지원) — 포인터 3개까지
+    this.input.addPointer(3);
 
     // 포인터 트레일 + 탭 스파크
     Juice.attachPointerTrail(this, this.skin.color);
@@ -299,6 +305,67 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  drawLinkLines() {
+    const g = this.linkLines;
+    g.clear();
+    const pulse = 0.6 + 0.4 * Math.sin(this.time.now * 0.008);
+    for (let i = 0; i < this.orbs.length; i++) {
+      const o = this.orbs[i];
+      if (!o.alive || !o.linkPartner) continue;
+      const p = o.linkPartner;
+      if (!p.alive) continue;
+      if (p.linkPartner !== o) continue; // 양방향 검증 (재사용 후 잔존 참조 방지)
+      const pIdx = this.orbs.indexOf(p);
+      if (pIdx <= i) continue; // 쌍당 1회만
+      // 바깥 글로우
+      g.lineStyle(12, COLORS.magenta, 0.18 * pulse);
+      g.strokeLineShape(new Phaser.Geom.Line(o.x, o.y, p.x, p.y));
+      g.lineStyle(6, COLORS.magenta, 0.45 * pulse);
+      g.strokeLineShape(new Phaser.Geom.Line(o.x, o.y, p.x, p.y));
+      g.lineStyle(2, 0xffffff, 0.85);
+      g.strokeLineShape(new Phaser.Geom.Line(o.x, o.y, p.x, p.y));
+      // 중앙 "SYNC" 라벨은 이 draw에선 생략 (복잡도↑). 대신 중점에 점 찍어 시각 앵커.
+      const mx = (o.x + p.x) / 2, my = (o.y + p.y) / 2;
+      g.fillStyle(COLORS.magenta, 0.9 * pulse);
+      g.fillCircle(mx, my, 4);
+    }
+  }
+
+  triggerLinkBonus(a, b) {
+    const { width } = this.scale;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+
+    // 추가 보너스 점수
+    const bonus = 300;
+    const prev = this.score;
+    this.score += bonus;
+    Juice.countUp(this, this.hudScore, prev, this.score, 220);
+
+    // LINK 팝업 (중앙)
+    this.showJudgmentFeedback('LINK', mx, my);
+    Juice.popText(this, mx, my + 30, `+${bonus}`, {
+      color: COLORS.magenta, size: 28,
+    });
+
+    // 중앙에서 양쪽으로 퍼지는 링 + 플래시
+    Juice.flash(this, COLORS.magenta, 180);
+    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 240, count: 2, duration: 500 });
+    Juice.burst(this, a.x, a.y, { count: 14, color: COLORS.magenta, speed: 300 });
+    Juice.burst(this, b.x, b.y, { count: 14, color: COLORS.magenta, speed: 300 });
+
+    // 보너스 젬 (가끔)
+    if (Math.random() < 0.4) {
+      this.gemsEarned += 1;
+      Juice.popText(this, mx, my - 30, '💎 +1', {
+        color: COLORS.gold, size: 24, rise: 60, duration: 900,
+      });
+    }
+
+    Audio.rankup();
+    Juice.shake(this, 0.012, 180);
+  }
+
   onOrbMiss(orb) {
     if (!this.isPlaying) return;
     const { width, height } = this.scale;
@@ -396,6 +463,9 @@ export class GameScene extends Phaser.Scene {
 
     for (const o of this.orbs) o.update(dt);
 
+    // LINK 연결선 렌더 — 살아있는 쌍에 대해 한 번씩만
+    this.drawLinkLines();
+
     // 콤보 윈도우 만료
     if (this.combo > 0 && time - this.lastTapAt > COMBO.windowMs) {
       this.resetCombo();
@@ -455,7 +525,6 @@ export class GameScene extends Phaser.Scene {
   spawnOrb() {
     const { width } = this.scale;
     const marginX = 64;
-    const x = Phaser.Math.Between(marginX, width - marginX);
     const y = -40;
 
     const speed = this.currentLevel.speed;
@@ -467,6 +536,23 @@ export class GameScene extends Phaser.Scene {
     else if (roll < PROB.rare + bombProb) kind = ORB_KIND.BOMB;
     else kind = ORB_KIND.NORMAL;
 
+    // LINK 쌍: LVL2 이후 일반 오브의 18% 확률로 대체.
+    // 두 오브가 나란히 떨어지며 연결선으로 이어짐 → 동시 탭 시 보너스.
+    if (kind === ORB_KIND.NORMAL && this.levelIdx >= 1 && Math.random() < 0.18) {
+      const a = this.orbs.find(o => !o.alive);
+      const b = a ? this.orbs.find(o => !o.alive && o !== a) : null;
+      if (a && b) {
+        const gap = Phaser.Math.Between(140, 200);
+        const cx = Phaser.Math.Between(marginX + gap / 2, width - marginX - gap / 2);
+        a.reset(cx - gap / 2, y, ORB_KIND.NORMAL, speed);
+        b.reset(cx + gap / 2, y, ORB_KIND.NORMAL, speed);
+        a.linkPartner = b;
+        b.linkPartner = a;
+        return;
+      }
+    }
+
+    const x = Phaser.Math.Between(marginX, width - marginX);
     const orb = this.orbs.find(o => !o.alive);
     if (!orb) return;
     orb.reset(x, y, kind, speed);
@@ -576,6 +662,18 @@ export class GameScene extends Phaser.Scene {
 
     // 콤보 바 업데이트
     this.drawComboBar();
+
+    // LINK 동시 탭 판정 — 파트너가 최근에 탭됐다면 보너스.
+    // 양방향 검증으로 재사용된 오브의 잔존 참조는 배제한다.
+    const LINK_WINDOW = 320;
+    if (obj.linkPartner && obj.linkPartner.linkPartner === obj) {
+      const partner = obj.linkPartner;
+      const partnerTap = partner.linkTappedAt;
+      obj.linkTappedAt = this.time.now;
+      if (partnerTap && (this.time.now - partnerTap) <= LINK_WINDOW) {
+        this.triggerLinkBonus(obj, partner);
+      }
+    }
 
     obj.pop();
     Analytics.track('tap', { kind, combo: this.combo, score: gained });
