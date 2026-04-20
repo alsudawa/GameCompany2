@@ -55,6 +55,8 @@ export class GameScene extends Phaser.Scene {
     this.reachedMilestones = new Set();
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
+    // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
+    this._lastLane = null;
 
     // 풀
     this.orbs = [];
@@ -236,9 +238,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawJudgmentZone() {
-    const { width } = this.scale;
+    const { width, height } = this.scale;
     const y = this.judgmentY;
     const g = this.add.graphics().setDepth(-6);
+
+    // 양엄지용 레인 분할 수직선 (화면 중앙)
+    g.lineStyle(1, 0x00e5ff, 0.08);
+    g.strokeLineShape(new Phaser.Geom.Line(width / 2, 80, width / 2, height - 10));
 
     // PERFECT 밴드 (강조) — 양쪽 끝 살짝 밝게
     g.fillStyle(0xffd24a, 0.05);
@@ -539,7 +545,8 @@ export class GameScene extends Phaser.Scene {
 
   spawnOrb() {
     const { width } = this.scale;
-    const marginX = 64;
+    const marginX = 56;
+    const mid = width / 2;
     const y = -40;
 
     const speed = this.currentLevel.speed;
@@ -551,23 +558,34 @@ export class GameScene extends Phaser.Scene {
     else if (roll < PROB.rare + bombProb) kind = ORB_KIND.BOMB;
     else kind = ORB_KIND.NORMAL;
 
-    // LINK 쌍: LVL2 이후 일반 오브의 18% 확률로 대체.
-    // 두 오브가 나란히 떨어지며 연결선으로 이어짐 → 동시 탭 시 보너스.
-    if (kind === ORB_KIND.NORMAL && this.levelIdx >= 1 && Math.random() < 0.18) {
+    // LINK 쌍: LVL2 이후 일반 오브의 22% 확률. 항상 좌/우로 분리
+    // → 양엄지를 각각 한 손씩 쓰도록 유도한다.
+    if (kind === ORB_KIND.NORMAL && this.levelIdx >= 1 && Math.random() < 0.22) {
       const a = this.orbs.find(o => !o.alive);
       const b = a ? this.orbs.find(o => !o.alive && o !== a) : null;
       if (a && b) {
-        const gap = Phaser.Math.Between(140, 200);
-        const cx = Phaser.Math.Between(marginX + gap / 2, width - marginX - gap / 2);
-        a.reset(cx - gap / 2, y, ORB_KIND.NORMAL, speed);
-        b.reset(cx + gap / 2, y, ORB_KIND.NORMAL, speed);
+        const lx = Phaser.Math.Between(marginX, mid - 40);
+        const rx = Phaser.Math.Between(mid + 40, width - marginX);
+        a.reset(lx, y, ORB_KIND.NORMAL, speed);
+        b.reset(rx, y, ORB_KIND.NORMAL, speed);
         a.linkPartner = b;
         b.linkPartner = a;
+        this._lastLane = 'both';
         return;
       }
     }
 
-    const x = Phaser.Math.Between(marginX, width - marginX);
+    // 단일 오브는 직전 레인의 반대편 선호.
+    // 같은 엄지를 연속 두드리지 않도록 80% 확률로 교차시킨다.
+    const preferLeft =
+      this._lastLane === 'right' ? Math.random() < 0.8 :
+      this._lastLane === 'left'  ? Math.random() < 0.2 :
+      Math.random() < 0.5;
+    const x = preferLeft
+      ? Phaser.Math.Between(marginX, mid - 20)
+      : Phaser.Math.Between(mid + 20, width - marginX);
+    this._lastLane = preferLeft ? 'left' : 'right';
+
     const orb = this.orbs.find(o => !o.alive);
     if (!orb) return;
     orb.reset(x, y, kind, speed);
