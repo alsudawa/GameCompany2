@@ -34,6 +34,9 @@ export class GameScene extends Phaser.Scene {
     const bgHex = '#' + this.stage.bgBase.toString(16).padStart(6, '0');
     this.cameras.main.setBackgroundColor(bgHex);
 
+    // 혹시 메뉴를 거치지 않고 진입한 경우에도 첫 입력으로 AudioContext를 언락.
+    Audio.unlockOnFirstInput(this);
+
     const profile = Storage.load();
     // 장착 스킨 컬러는 유지하되, 스테이지 팔레트를 우선 쓰도록 오브에 전달한다.
     this.skin = SKIN_EFFECTS[profile.equippedSkin] || SKIN_EFFECTS.default;

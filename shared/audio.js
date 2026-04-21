@@ -12,13 +12,16 @@ let _masterGain = null;
 let _musicGain = null;
 let _sfxGain = null;
 
+// unlock 전에 요청된 BGM. unlock되면 자동 재생.
+let _pendingBgm = null;
+
 function ctx() {
   if (!_ctx && typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)) {
     _ctx = new (window.AudioContext || window.webkitAudioContext)();
   }
   if (_ctx && !_masterGain) {
     _masterGain = _ctx.createGain(); _masterGain.gain.value = 0.9;
-    _musicGain  = _ctx.createGain(); _musicGain.gain.value  = 0.5;
+    _musicGain  = _ctx.createGain(); _musicGain.gain.value  = 0.85;
     _sfxGain    = _ctx.createGain(); _sfxGain.gain.value    = 1.0;
     _musicGain.connect(_masterGain);
     _sfxGain.connect(_masterGain);
@@ -31,6 +34,12 @@ function unlock() {
   const c = ctx();
   if (c && c.state === 'suspended') c.resume();
   _unlocked = true;
+  // 언락 전에 요청됐던 BGM을 지금 시작.
+  if (_pendingBgm) {
+    const { trackId, opts } = _pendingBgm;
+    _pendingBgm = null;
+    startBgm(trackId, opts);
+  }
 }
 
 // ───────── 저수준 빌딩 블록 ─────────
@@ -259,9 +268,14 @@ const BGM_TRACKS = {};
 // BGM 재생 상태
 let _bgm = null; // { out: GainNode, stop: () => void, trackId: string }
 
-function startBgm(trackId, { fadeIn = 0.8, volume = 0.5 } = {}) {
+function startBgm(trackId, { fadeIn = 0.8, volume = 0.8 } = {}) {
   const c = ctx();
-  if (!c || !_unlocked) return;
+  if (!c) return;
+  // 아직 언락 전이면 pending으로 저장해뒀다가 unlock() 후 자동 재생.
+  if (!_unlocked) {
+    _pendingBgm = { trackId, opts: { fadeIn, volume } };
+    return;
+  }
   const track = BGM_TRACKS[trackId];
   if (!track) return;
   if (_bgm && _bgm.trackId === trackId) return; // 이미 재생 중
@@ -301,6 +315,8 @@ function startBgm(trackId, { fadeIn = 0.8, volume = 0.5 } = {}) {
 }
 
 function stopBgm({ fadeOut = 0.4 } = {}) {
+  // 언락 전에 예약된 재생 요청도 함께 취소.
+  _pendingBgm = null;
   if (_bgm) {
     _bgm.stop({ fadeOut });
     _bgm = null;
