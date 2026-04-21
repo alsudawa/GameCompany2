@@ -2,6 +2,13 @@
 // 모든 소리는 오실레이터/노이즈로 합성 — 외부 에셋 없음.
 // v3 (Composer 역할): 버스 분리(master/music/sfx), 새 SFX(PERFECT/GREAT/GOOD/MISS/LINK/LEVEL UP),
 //                      절차적 BGM 2트랙(메뉴·플레이) + fade in/out.
+// 디버그: window.__AUDIO_DEBUG = true 로 콘솔에 상태 로그 출력.
+
+function dlog(...args) {
+  if (typeof window !== 'undefined' && window.__AUDIO_DEBUG) {
+    console.log('[audio]', ...args);
+  }
+}
 
 let _ctx = null;
 let _enabled = true;
@@ -18,6 +25,7 @@ let _pendingBgm = null;
 function ctx() {
   if (!_ctx && typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)) {
     _ctx = new (window.AudioContext || window.webkitAudioContext)();
+    dlog('ctx created, state=', _ctx.state);
   }
   if (_ctx && !_masterGain) {
     _masterGain = _ctx.createGain(); _masterGain.gain.value = 0.9;
@@ -26,15 +34,18 @@ function ctx() {
     _musicGain.connect(_masterGain);
     _sfxGain.connect(_masterGain);
     _masterGain.connect(_ctx.destination);
+    dlog('mixer buses connected');
   }
   return _ctx;
 }
 
 function unlock() {
   const c = ctx();
-  if (c && c.state === 'suspended') c.resume();
+  if (c && c.state === 'suspended') {
+    c.resume().then(() => dlog('resume complete, state=', c.state)).catch(e => dlog('resume failed', e));
+  }
   _unlocked = true;
-  // 언락 전에 요청됐던 BGM을 지금 시작.
+  dlog('unlocked; pending=', _pendingBgm?.trackId);
   if (_pendingBgm) {
     const { trackId, opts } = _pendingBgm;
     _pendingBgm = null;
@@ -270,30 +281,44 @@ let _bgm = null; // { out: GainNode, stop: () => void, trackId: string }
 
 function startBgm(trackId, { fadeIn = 0.8, volume = 0.8 } = {}) {
   const c = ctx();
+  dlog('startBgm called', { trackId, ctx: !!c, state: c?.state, unlocked: _unlocked });
   if (!c) return;
   // 아직 언락 전이면 pending으로 저장해뒀다가 unlock() 후 자동 재생.
   if (!_unlocked) {
     _pendingBgm = { trackId, opts: { fadeIn, volume } };
+    dlog('startBgm queued (not unlocked)', trackId);
     return;
   }
+  // 벨트 앤 서스펜더스: 혹시 context가 다시 suspended면 resume 시도.
+  if (c.state === 'suspended') {
+    c.resume().then(() => dlog('startBgm resume ok, state=', c.state))
+              .catch(e => dlog('startBgm resume err', e));
+  }
   const track = BGM_TRACKS[trackId];
-  if (!track) return;
-  if (_bgm && _bgm.trackId === trackId) return; // 이미 재생 중
+  if (!track) { dlog('startBgm: no track', trackId, 'have=', Object.keys(BGM_TRACKS)); return; }
+  if (_bgm && _bgm.trackId === trackId) { dlog('startBgm: already playing', trackId); return; }
   stopBgm({ fadeOut: 0.2 });
 
   const out = c.createGain();
-  out.gain.setValueAtTime(0, c.currentTime);
-  out.gain.linearRampToValueAtTime(volume, c.currentTime + fadeIn);
+  const t0 = c.currentTime;
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(volume, t0 + fadeIn);
   out.connect(_musicGain);
+  dlog('bgm out connected, t0=', t0, 'volume=', volume, 'fadeIn=', fadeIn);
 
   let active = true;
-  let nextStart = c.currentTime + 0.05;
+  let nextStart = t0 + 0.05;
+  let iters = 0;
 
   const scheduleLoop = () => {
     if (!active) return;
     for (const note of track.notes) {
       scheduleNote(note, nextStart + note.t, out);
     }
+    if (iters === 0) {
+      dlog('bgm first loop scheduled', { track: trackId, notes: track.notes.length, startAt: nextStart, currentTime: c.currentTime });
+    }
+    iters++;
     nextStart += track.loopSec;
     const waitMs = Math.max(60, (nextStart - c.currentTime - 0.25) * 1000);
     setTimeout(scheduleLoop, waitMs);
@@ -346,11 +371,19 @@ export const Audio = {
 
   unlockOnFirstInput(scene) {
     if (_unlocked) return;
+    // 주의: Phaser의 scene.input.pointerdown은 기본 설정에서 다음 프레임에 큐잉되어
+    // 디스패치되므로, 브라우저의 "user gesture" 스택에서 벗어난다.
+    // Chrome/Safari의 autoplay 정책은 resume()을 사용자 제스처 콜스택 안에서
+    // 호출해야만 허용하므로, 네이티브 DOM 이벤트에 직접 붙여 즉시 언락한다.
+    const events = ['pointerdown', 'touchstart', 'mousedown', 'keydown', 'click'];
+    const target = (typeof window !== 'undefined') ? window : null;
+    if (!target) return;
     const handler = () => {
       unlock();
-      scene.input?.off('pointerdown', handler);
+      events.forEach(evt => target.removeEventListener(evt, handler, true));
     };
-    scene.input?.on('pointerdown', handler);
+    events.forEach(evt => target.addEventListener(evt, handler, { capture: true, passive: true }));
+    dlog('unlockOnFirstInput listeners attached to window');
   },
 
   // BGM
