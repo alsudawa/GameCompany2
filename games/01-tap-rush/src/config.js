@@ -1,6 +1,7 @@
 // Tap Rush 밸런스/비주얼 상수.
 // 기획자가 수치만 바꾸면 즉시 반영되도록 한 곳에 모음.
 // v2: "도파민 패스" — 세션 단축 + 스폰 가속 + 레어↑
+// v3: 재미 개선 패스 — SHIELD 오브, FEVER TIME, 햅틱, 데일리 스트릭, 스테이지 잠금
 
 export const GAME = {
   width: 480,
@@ -24,6 +25,7 @@ export const SPEED = {
 
 export const PROB = {
   rare: 0.12,
+  shield: 0.05,   // 실드 오브: 다음 미스 1회 콤보 보호
   bombStart: 0.06,
   bombEnd: 0.18,
 };
@@ -39,9 +41,15 @@ export const LEVELS = [
 ];
 
 export const COMBO = {
-  windowMs: 720,
-  bonusPerStep: 0.09,
-  maxMul: 6.0,
+  windowMs: 820,       // 720→820ms: 모바일 반응 지연 감안한 여유
+  bonusPerStep: 0.14,  // 0.09→0.14: 콤보가 빠르게 쌓이는 만족감
+  maxMul: 4.5,         // 6.0→4.5: 콤보25에서 상한 도달, 점수 폭발 방지
+};
+
+// FEVER TIME — 콤보 20 이상 달성 시 자동 발동. 5초간 모든 오브가 레어(2x 점수).
+export const FEVER = {
+  comboThreshold: 20,  // 이 콤보 이상이면 피버 발동
+  durationMs: 5000,    // 피버 지속 시간
 };
 
 export const SCORE = {
@@ -60,8 +68,8 @@ export const COMBO_RANKS = [
   { at: 40, label: 'GOD LIKE!', color: 0xffffff },
 ];
 
-// 세션 중 점수 마일스톤 (달성 시 팡파르)
-export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
+// 세션 중 점수 마일스톤 (달성 시 팡파르) — 40초 세션 기준 5~7초마다 한 번씩 터지도록 조정
+export const SCORE_MILESTONES = [400, 1200, 3000, 6500, 11000, 18000];
 
 export const GRADE_CUTS = {
   S: 25000,   // 밸런스 재조정 (세션 짧아짐 반영)
@@ -99,10 +107,14 @@ export const COLORS = {
   magenta: 0xff2bd6,
   gold: 0xffd24a,
   red: 0xff4d6d,
+  green: 0x00ff88,   // SHIELD 오브 색상
   white: 0xffffff,
   text: 0xe8e8f0,
   dim: 0x8a8aa8,
 };
+
+// 스테이지 잠금 해제 기준 점수 — 첫 스테이지는 항상 열려 있음
+export const STAGE_UNLOCK_SCORES = [0, 2000, 6000, 15000, 25000];
 
 export const SKIN_EFFECTS = {
   default: { color: COLORS.cyan, particle: COLORS.cyan },

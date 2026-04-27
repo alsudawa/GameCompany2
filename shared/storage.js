@@ -15,6 +15,10 @@ const DEFAULT_PROFILE = {
   lastLoginISO: null,
   firstPurchaseDone: false,
   seasonPass: { active: false, expiresISO: null, claimed: [] },
+  // 데일리 스트릭
+  streakDays: 0,           // 연속 출석 일수
+  lastLoginDate: null,     // 마지막 접속 날짜 (YYYY-MM-DD)
+  dailyClaimedDate: null,  // 오늘 보상 수령 날짜
 };
 
 function safeParse(raw) {
@@ -94,5 +98,34 @@ export const Storage = {
   update(patch) {
     const p = this.load();
     this.save({ ...p, ...patch });
+  },
+
+  // 데일리 스트릭 체크 — 앱 시작 시 1회 호출.
+  // 반환값: { streakDays, gemReward, isNewDay }
+  checkDailyStreak() {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const p = this.load();
+    const last = p.lastLoginDate;
+
+    if (last === today) return { streakDays: p.streakDays, gemReward: 0, isNewDay: false };
+
+    let newStreak;
+    if (!last) {
+      newStreak = 1;
+    } else {
+      const diffMs = new Date(today) - new Date(last);
+      const diffDays = Math.round(diffMs / 86400000);
+      newStreak = diffDays === 1 ? (p.streakDays || 0) + 1 : 1; // 하루라도 빠지면 리셋
+    }
+
+    // 연속 일수별 젬 보상: 7일마다 보너스
+    const gemReward = newStreak % 7 === 0 ? 15 : 5;
+    p.streakDays = newStreak;
+    p.lastLoginDate = today;
+    p.dailyClaimedDate = today;
+    p.gems = Math.max(0, (p.gems || 0) + gemReward);
+    this.save(p);
+
+    return { streakDays: newStreak, gemReward, isNewDay: true };
   },
 };

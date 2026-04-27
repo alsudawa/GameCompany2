@@ -58,7 +58,7 @@ export class ResultScene extends Phaser.Scene {
 
     // NEW BEST 뱃지
     if (d.isBest) {
-      const tag = this.add.text(width / 2, height * 0.52, '▲  NEW BEST', {
+      const tag = this.add.text(width / 2, height * 0.51, '▲  NEW BEST', {
         fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
         color: '#ffd24a',
       }).setOrigin(0.5).setLetterSpacing(5);
@@ -66,6 +66,18 @@ export class ResultScene extends Phaser.Scene {
         targets: tag, alpha: { from: 0.5, to: 1 },
         duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
+    }
+
+    // "다음 등급까지 X점" — 재도전 심리 유발
+    if (g.grade !== 'S') {
+      const nextCut = g.grade === 'C' ? GRADE_CUTS.B : g.grade === 'B' ? GRADE_CUTS.A : GRADE_CUTS.S;
+      const nextLabel = g.grade === 'C' ? 'B' : g.grade === 'B' ? 'A' : 'S';
+      const gap = nextCut - d.score;
+      const gapText = this.add.text(width / 2, height * 0.535, `▸  ${gap.toLocaleString()} pts to Grade ${nextLabel}`, {
+        fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+        color: '#8a90b0',
+      }).setOrigin(0.5).setLetterSpacing(2).setAlpha(0);
+      this.tweens.add({ targets: gapText, alpha: 1, duration: 400, delay: 600 });
     }
 
     // Stat 카드 (2x2)

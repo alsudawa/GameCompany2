@@ -4,7 +4,7 @@ import { Storage } from '../../../../shared/storage.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { UI, FONT } from '../../../../shared/ui.js';
-import { COLORS, STAGES } from '../config.js';
+import { COLORS, STAGES, STAGE_UNLOCK_SCORES } from '../config.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super('MenuScene'); }
@@ -16,6 +16,12 @@ export class MenuScene extends Phaser.Scene {
     Audio.unlockOnFirstInput(this);
     // 메뉴 BGM — 잔잔한 A 마이너 루프 (유저 제스처 직후 자동 시작)
     Audio.playBgm?.('menu', { fadeIn: 0.6 });
+
+    // 데일리 스트릭 체크 — 보상 지급 + 알림
+    const streak = Storage.checkDailyStreak();
+    if (streak.isNewDay) {
+      this.time.delayedCall(800, () => this.showStreakToast(streak));
+    }
 
     // 배경 레이어
     UI.drawGrid(this, width, height, { cell: 40, color: 0x0f1530, alpha: 0.45, depth: -25 });
@@ -69,9 +75,9 @@ export class MenuScene extends Phaser.Scene {
     // 프로필 stat 행 (컴팩트)
     const profile = Storage.load();
     const best = profile.bestScores['tap-rush'] || 0;
-    this.drawStatChip(width * 0.20, height * 0.37, 'BEST',  best.toLocaleString(), 0xffd24a);
-    this.drawStatChip(width * 0.50, height * 0.37, 'COINS', String(profile.coins),  0x00e5ff);
-    this.drawStatChip(width * 0.80, height * 0.37, 'GEMS',  String(profile.gems),   0xff2bd6);
+    this.drawStatChip(width * 0.20, height * 0.37, 'BEST',   best.toLocaleString(),               0xffd24a);
+    this.drawStatChip(width * 0.50, height * 0.37, 'GEMS',   String(profile.gems),                0xff2bd6);
+    this.drawStatChip(width * 0.80, height * 0.37, `🔥 ${profile.streakDays ?? 0}d`, 'STREAK', 0x00ff88);
 
     // 스테이지 선택 — 좌/우 화살표로 5개 스테이지 순회
     this.selectedIdx = Storage.load().lastStageIdx ?? 0;
@@ -83,8 +89,16 @@ export class MenuScene extends Phaser.Scene {
     this.makeArrowButton(28,         height * 0.56, '◂', () => this.cycleStage(-1));
     this.makeArrowButton(width - 28, height * 0.56, '▸', () => this.cycleStage(+1));
 
-    // 메인 버튼 — 선택된 스테이지로 START
+    // 메인 버튼 — 선택된 스테이지로 START (잠긴 스테이지는 거부)
     this.makeHexButton(width / 2, height * 0.72, 260, 72, '▶  START', 0x00e5ff, () => {
+      const prof = Storage.load();
+      const bestScr = prof.bestScores['tap-rush'] || 0;
+      const needed = STAGE_UNLOCK_SCORES[this.selectedIdx] ?? 0;
+      if (bestScr < needed) {
+        Audio.bomb?.();
+        Juice.flash(this, 0x3a3f5c, 140);
+        return;
+      }
       Audio.rare();
       Audio.stopBgm?.({ fadeOut: 0.25 });
       const stage = STAGES[this.selectedIdx];
@@ -175,10 +189,15 @@ export class MenuScene extends Phaser.Scene {
 
   renderStageCard() {
     const stage = STAGES[this.selectedIdx];
+    const profile = Storage.load();
+    const bestScore = profile.bestScores['tap-rush'] || 0;
+    const unlockRequired = STAGE_UNLOCK_SCORES[this.selectedIdx] ?? 0;
+    const isLocked = bestScore < unlockRequired;
+
     const c = this.stageCard;
     const { cx, cy, w, h } = c;
-    const mainColor = stage.palette.normal;
-    const accent = stage.palette.accent;
+    const mainColor = isLocked ? 0x3a3f5c : stage.palette.normal;
+    const accent = isLocked ? 0x3a3f5c : stage.palette.accent;
     // 배경
     c.bg.clear();
     c.bg.fillStyle(0x08091a, 0.94);
@@ -207,9 +226,13 @@ export class MenuScene extends Phaser.Scene {
     c.orb.strokeCircle(ox, oy, 28);
     // 텍스트
     const hex = '#' + mainColor.toString(16).padStart(6, '0');
-    c.label.setText(`STAGE ${stage.label}`).setColor('#6b708f');
-    c.name.setText(stage.name).setColor(hex);
-    c.tagline.setText(stage.tagline);
+    c.label.setText(`STAGE ${stage.label}`).setColor(isLocked ? '#3a3f5c' : '#6b708f');
+    c.name.setText(isLocked ? '🔒 LOCKED' : stage.name).setColor(hex);
+    c.tagline.setText(
+      isLocked
+        ? `Reach ${unlockRequired.toLocaleString()} pts to unlock`
+        : stage.tagline,
+    );
     // 하단 5개 도트 (현재 위치 인디케이터)
     c.dots.clear();
     const dotSpace = 12;
@@ -220,12 +243,17 @@ export class MenuScene extends Phaser.Scene {
       c.dots.fillStyle(active ? mainColor : 0x3a3f5c, active ? 1 : 0.8);
       c.dots.fillCircle(dx0 + i * dotSpace, cy + h / 2 - 10, active ? 3 : 2);
     }
-    // 카드 전체를 탭하면 바로 START (편의)
+    // 카드 전체를 탭하면 START (잠긴 스테이지는 거부)
     const zone = this._stageZone;
     if (zone) zone.destroy();
     this._stageZone = this.add.rectangle(cx, cy, w, h, 0x000000, 0)
-      .setInteractive({ useHandCursor: true })
+      .setInteractive({ useHandCursor: !isLocked })
       .on('pointerup', () => {
+        if (isLocked) {
+          Audio.bomb?.();
+          Juice.flash(this, 0x3a3f5c, 140);
+          return;
+        }
         Audio.tap();
         Audio.stopBgm?.({ fadeOut: 0.25 });
         Storage.update({ lastStageIdx: this.selectedIdx });
@@ -361,6 +389,37 @@ export class MenuScene extends Phaser.Scene {
     container.add(cornerG);
 
     return container;
+  }
+
+  showStreakToast({ streakDays, gemReward }) {
+    const { width, height } = this.scale;
+    const cx = width / 2, cy = height * 0.88;
+    const panelW = 280, panelH = 56;
+
+    const bg = this.add.graphics().setDepth(900);
+    bg.fillStyle(0x08091a, 0.95);
+    bg.fillRoundedRect(cx - panelW / 2, cy - panelH / 2, panelW, panelH, 10);
+    bg.lineStyle(1, 0x00ff88, 0.8);
+    bg.strokeRoundedRect(cx - panelW / 2, cy - panelH / 2, panelW, panelH, 10);
+
+    const msg = gemReward > 0
+      ? `🔥 ${streakDays} DAY STREAK!  💎 +${gemReward}`
+      : `🔥 ${streakDays} DAY STREAK!`;
+    const t = this.add.text(cx, cy, msg, {
+      fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
+      color: '#00ff88',
+    }).setOrigin(0.5).setDepth(901).setLetterSpacing(2);
+
+    [bg, t].forEach(obj => obj.setAlpha(0));
+    this.tweens.add({
+      targets: [bg, t], alpha: 1, duration: 300, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: [bg, t], alpha: 0, duration: 400, delay: 2200, ease: 'Cubic.In',
+          onComplete: () => { bg.destroy(); t.destroy(); },
+        });
+      },
+    });
   }
 
   showStudioSheet() {

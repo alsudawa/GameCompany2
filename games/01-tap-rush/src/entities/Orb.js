@@ -5,18 +5,22 @@
 // 히트박스는 시각 크기와 분리되어 관대함 유지.
 
 import { COLORS } from '../config.js';
+
+const SHIELD_COLOR = COLORS.green ?? 0x00ff88;
 import { UI } from '../../../../shared/ui.js';
 
 export const ORB_KIND = {
   NORMAL: 'normal',
   RARE: 'rare',
   BOMB: 'bomb',
+  SHIELD: 'shield',  // 탭 시 다음 미스 1회 콤보 보호
 };
 
 const RADIUS = {
   normal: 30,
   rare: 38,
   bomb: 34,
+  shield: 30,
 };
 
 const MAX_HIT = 62;
@@ -90,8 +94,9 @@ export class Orb extends Phaser.GameObjects.Container {
     // 스테이지 팔레트 우선. 씬에 stage가 없으면 (예: 프리뷰) 기본색으로 폴백.
     const palette = this.scene.stage?.palette;
     const color =
-      kind === ORB_KIND.RARE ? (palette?.rare ?? COLORS.gold) :
-      kind === ORB_KIND.BOMB ? (palette?.bomb ?? COLORS.red) :
+      kind === ORB_KIND.RARE   ? (palette?.rare   ?? COLORS.gold) :
+      kind === ORB_KIND.BOMB   ? (palette?.bomb   ?? COLORS.red)  :
+      kind === ORB_KIND.SHIELD ? SHIELD_COLOR :
       (palette?.normal ?? COLORS.cyan);
     this._color = color;
     this._radius = r;
@@ -105,6 +110,9 @@ export class Orb extends Phaser.GameObjects.Container {
       // 큰 금지 기호 + 외곽 AVOID 회전 라벨
       this.icon.setText('⛔').setColor('#ffffff').setFontSize(34);
       this.avoidLabel.setVisible(true);
+    } else if (kind === ORB_KIND.SHIELD) {
+      this.icon.setText('🛡').setColor('#ffffff').setFontSize(22);
+      this.avoidLabel.setVisible(false);
     } else {
       this.icon.setText('').setColor('#ffffff').setFontSize(22);
       this.avoidLabel.setVisible(false);
@@ -128,9 +136,10 @@ export class Orb extends Phaser.GameObjects.Container {
   drawAll(pulseAmp = 0) {
     const r = this._radius;
     const c = this._color;
-    const isBomb = this.kind === ORB_KIND.BOMB;
+    const isBomb   = this.kind === ORB_KIND.BOMB;
+    const isShield = this.kind === ORB_KIND.SHIELD;
 
-    // 할로 — 폭탄은 더 강한 맥동 + 진한 레드
+    // 할로 — 폭탄은 더 강한 맥동 + 진한 레드; 실드는 부드러운 초록 맥동
     this.halo.clear();
     if (isBomb) {
       const bombPulse = (Math.sin(this._pulse * 3) + 1) * 0.5; // 0~1
@@ -138,6 +147,12 @@ export class Orb extends Phaser.GameObjects.Container {
       this.halo.fillCircle(0, 0, r + 38 + pulseAmp * 4);
       this.halo.fillStyle(0xff0030, 0.12 + bombPulse * 0.18);
       this.halo.fillCircle(0, 0, r + 22 + pulseAmp * 2);
+    } else if (isShield) {
+      const shieldPulse = (Math.sin(this._pulse * 2) + 1) * 0.5;
+      this.halo.fillStyle(SHIELD_COLOR, 0.07 + shieldPulse * 0.08);
+      this.halo.fillCircle(0, 0, r + 26 + pulseAmp * 3);
+      this.halo.fillStyle(SHIELD_COLOR, 0.14 + shieldPulse * 0.12);
+      this.halo.fillCircle(0, 0, r + 14 + pulseAmp);
     } else {
       this.halo.fillStyle(c, 0.06);
       this.halo.fillCircle(0, 0, r + 30 + pulseAmp * 2);
@@ -155,6 +170,11 @@ export class Orb extends Phaser.GameObjects.Container {
       this.glow.strokeCircle(0, 0, r + 6);
       this.glow.lineStyle(1, 0xffd24a, 0.8);
       this.glow.strokeCircle(0, 0, r + 9);
+    } else if (isShield) {
+      this.glow.fillStyle(SHIELD_COLOR, 0.18);
+      this.glow.fillCircle(0, 0, r + 8);
+      this.glow.lineStyle(2, SHIELD_COLOR, 1);
+      this.glow.strokeCircle(0, 0, r + 3);
     } else {
       this.glow.fillStyle(c, 0.22);
       this.glow.fillCircle(0, 0, r + 8);
@@ -164,7 +184,19 @@ export class Orb extends Phaser.GameObjects.Container {
 
     // 본체
     this.body.clear();
-    if (isBomb) {
+    if (isShield) {
+      // 녹색 링 + 반투명 중심 + 흰 하이라이트
+      this.body.fillStyle(SHIELD_COLOR, 0.85);
+      this.body.fillCircle(0, 0, r);
+      this.body.fillStyle(0x002a10, 0.7);
+      this.body.fillCircle(0, 0, r * 0.68);
+      this.body.fillStyle(SHIELD_COLOR, 0.5);
+      this.body.fillCircle(0, 0, r * 0.42);
+      this.body.fillStyle(0xffffff, 0.8);
+      this.body.fillCircle(-r * 0.28, -r * 0.30, r * 0.16);
+      this.body.lineStyle(2, 0xffffff, 0.6);
+      this.body.strokeCircle(0, 0, r);
+    } else if (isBomb) {
       // 동심 경고 밴드로 구성 — 원 내부에만 그려 옆 오브를 가리지 않는다.
       // (이전의 "도넛 마스크" 트릭은 반경 6r짜리 검은 링을 그려 인접 오브를 덮었음)
       this.body.fillStyle(0x1f0008, 1);
@@ -199,9 +231,15 @@ export class Orb extends Phaser.GameObjects.Container {
       this.body.fillCircle(-r * 0.32, -r * 0.34, r * 0.18);
     }
 
-    // 쉬머 / 폭탄은 회전 경고 스파이크 + AVOID 라벨 궤도
+    // 쉬머 / 폭탄: 회전 경고 스파이크 / 실드: 이중 점선 링
     this.shimmer.clear();
-    if (isBomb) {
+    if (isShield) {
+      // 안쪽 실선 + 바깥 점선 이중 링 (보호막 느낌)
+      this.shimmer.lineStyle(2, SHIELD_COLOR, 0.9);
+      this.shimmer.strokeCircle(0, 0, r + 2);
+      UI.drawDashedCircle(this.shimmer, 0, 0, r + 12, SHIELD_COLOR, 0.7, 18, 2, this._shimmerAngle);
+      UI.drawDashedCircle(this.shimmer, 0, 0, r + 20, SHIELD_COLOR, 0.4, 24, 1.5, -this._shimmerAngle * 0.7);
+    } else if (isBomb) {
       // 짧은 방사 스파이크 (경고 햇살)
       const spokes = 16;
       this.shimmer.lineStyle(3, 0xff0030, 1);

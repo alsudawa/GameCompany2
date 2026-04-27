@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage, FEVER,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -67,6 +67,15 @@ export class GameScene extends Phaser.Scene {
     this.currentLevel = LEVELS[0];
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
+
+    // SHIELD — 다음 미스 1회 콤보 보호
+    this.shieldActive = false;
+
+    // FEVER TIME — 콤보 FEVER.comboThreshold 이상 달성 시 발동
+    this.feverActive = false;
+    this.feverTimeMs = 0;
+    this.feverOverlay = null;
+    this.feverTriggeredAt = new Set(); // 중복 발동 방지용 콤보 기록
 
     // 풀
     this.orbs = [];
@@ -399,10 +408,25 @@ export class GameScene extends Phaser.Scene {
   onOrbMiss(orb) {
     if (!this.isPlaying) return;
     const { width, height } = this.scale;
-    // 콤보 끊김 (탭은 없었지만 놓쳤다 — 가벼운 벌)
+    const missX = Phaser.Math.Clamp(orb.x, 60, width - 60);
+
+    // SHIELD가 활성화돼 있으면 콤보 보호
+    if (this.shieldActive && this.combo > 0) {
+      this.shieldActive = false;
+      this.clearShieldIcon();
+      Juice.popText(this, missX, height - 80, 'PROTECTED!', {
+        color: COLORS.green, size: 22,
+      });
+      if (navigator.vibrate) navigator.vibrate(12);
+      return;
+    }
+
     if (this.combo > 0) this.resetCombo();
-    // 하단 경계 근처에서 MISS 표시
-    this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
+    // MISS 시각 피드백 강화 (콤보 끊김 명확히 인지)
+    Juice.flash(this, COLORS.red, 120);
+    Juice.shake(this, 0.007, 140);
+    if (navigator.vibrate) navigator.vibrate(20);
+    this.showJudgmentFeedback('MISS', missX, height - 80);
   }
 
   drawComboBar() {
@@ -480,6 +504,20 @@ export class GameScene extends Phaser.Scene {
         this.hudTime.setColor('#e8ecf5');
       }
 
+      // 마지막 10초 화면 테두리 맥동 (압박감 강화)
+      if (sec <= 10 && sec > 0) {
+        if (!this.timePulseBorder) {
+          this.timePulseBorder = this.add.graphics().setDepth(510);
+        }
+        const pulse = (Math.sin(this.time.now * 0.009) + 1) * 0.5;
+        const edgeColor = sec <= 3 ? COLORS.red : COLORS.gold;
+        this.timePulseBorder.clear();
+        this.timePulseBorder.lineStyle(8, edgeColor, pulse * 0.28);
+        this.timePulseBorder.strokeRect(0, 0, width, height);
+      } else if (this.timePulseBorder) {
+        this.timePulseBorder.clear();
+      }
+
       // 레벨 진행 체크
       this.checkLevelProgression();
 
@@ -490,6 +528,12 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (this.remaining <= 0) this.endSession();
+
+      // FEVER 타이머 소진
+      if (this.feverActive) {
+        this.feverTimeMs -= delta;
+        if (this.feverTimeMs <= 0) this.endFever();
+      }
     }
 
     for (const o of this.orbs) o.update(dt);
@@ -564,11 +608,18 @@ export class GameScene extends Phaser.Scene {
     const bombProb = this.currentLevel.bomb * this.stage.bombMul;
     const rareProb = PROB.rare * this.stage.rareMul;
 
-    const roll = Math.random();
+    // FEVER 중엔 모든 오브가 레어 (2x 점수, 젬 드롭)
     let kind;
-    if (roll < rareProb) kind = ORB_KIND.RARE;
-    else if (roll < rareProb + bombProb) kind = ORB_KIND.BOMB;
-    else kind = ORB_KIND.NORMAL;
+    if (this.feverActive) {
+      kind = ORB_KIND.RARE;
+    } else {
+      const shieldProb = PROB.shield ?? 0;
+      const roll = Math.random();
+      if (roll < rareProb) kind = ORB_KIND.RARE;
+      else if (roll < rareProb + shieldProb) kind = ORB_KIND.SHIELD;
+      else if (roll < rareProb + shieldProb + bombProb) kind = ORB_KIND.BOMB;
+      else kind = ORB_KIND.NORMAL;
+    }
 
     // LINK 쌍: LVL2 이후 일반 오브에서 스테이지별 확률로 대체. 항상 좌/우 분리
     // → 양엄지를 각각 한 손씩 쓰도록 유도한다.
@@ -609,6 +660,7 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === ORB_KIND.BOMB) {
       Audio.bomb();
+      if (navigator.vibrate) navigator.vibrate([6, 8, 14, 20, 30]); // 날카로운 경고 패턴
       Juice.flash(this, COLORS.red, 200);
       Juice.shake(this, 0.022, 260);
       Juice.burst(this, obj.x, obj.y, { count: 18, color: COLORS.red, speed: 320 });
@@ -622,9 +674,29 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // SHIELD 오브 처리 — 탭 즉시 보호막 활성화
+    if (kind === ORB_KIND.SHIELD) {
+      this.shieldActive = true;
+      Audio.rare?.();
+      if (navigator.vibrate) navigator.vibrate(18);
+      Juice.flash(this, COLORS.green, 140);
+      Juice.burst(this, obj.x, obj.y, { count: 12, color: COLORS.green, speed: 200 });
+      Juice.ring(this, obj.x, obj.y, { color: COLORS.green, radius: 100, count: 1 });
+      Juice.popText(this, obj.x, obj.y - 50, 'SHIELD!', {
+        color: COLORS.green, size: 28,
+      });
+      this.showShieldIcon();
+      obj.pop();
+      Analytics.track('tap_shield');
+      return;
+    }
+
     // 타이밍 판정 (TAP ZONE 기준)
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
+
+    // 햅틱 — 탭 성공 경량 진동
+    if (navigator.vibrate) navigator.vibrate(8);
 
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
@@ -692,6 +764,16 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    // FEVER TIME 발동 — 임계 콤보 도달 시 첫 1회만
+    if (
+      this.combo >= FEVER.comboThreshold &&
+      !this.feverActive &&
+      !this.feverTriggeredAt.has(Math.floor(this.elapsed))
+    ) {
+      this.feverTriggeredAt.add(Math.floor(this.elapsed));
+      this.startFever();
+    }
+
     // 마일스톤 체크
     for (const m of SCORE_MILESTONES) {
       if (this.score >= m && !this.reachedMilestones.has(m)) {
@@ -728,6 +810,7 @@ export class GameScene extends Phaser.Scene {
   showRankBanner(rank) {
     const { width, height } = this.scale;
     Audio.rankup();
+    if (navigator.vibrate) navigator.vibrate(36); // 콤보 등급 달성 축하 진동
     Juice.flash(this, rank.color, 160);
 
     const t = this.add.text(width / 2, height * 0.45, rank.label, {
@@ -762,6 +845,87 @@ export class GameScene extends Phaser.Scene {
         Juice.burst(this, width * 0.2, height * 0.45, { count: 14, color: rank.color, speed: 340 });
         Juice.burst(this, width * 0.8, height * 0.45, { count: 14, color: rank.color, speed: 340 });
       });
+    }
+  }
+
+  startFever() {
+    const { width, height } = this.scale;
+    this.feverActive = true;
+    this.feverTimeMs = FEVER.durationMs;
+
+    if (navigator.vibrate) navigator.vibrate([10, 5, 10, 5, 30]);
+    Audio.fanfare?.();
+    Juice.flash(this, COLORS.gold, 300);
+    Juice.ring(this, width / 2, height / 2, { color: COLORS.gold, radius: 400, count: 3, duration: 700 });
+
+    const t = this.add.text(width / 2, height * 0.25, '🔥 FEVER TIME! 🔥', {
+      fontFamily: FONT.display, fontSize: '52px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(990).setAlpha(0).setScale(0.5);
+    this.tweens.add({
+      targets: t, scale: 1, alpha: 1, duration: 240, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, y: t.y - 30,
+          duration: 480, delay: 400, ease: 'Cubic.In',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+
+    // 황금빛 배경 오버레이
+    this.feverOverlay = this.add.rectangle(width / 2, height / 2, width, height, COLORS.gold, 0).setDepth(450);
+    this.tweens.add({
+      targets: this.feverOverlay,
+      alpha: { from: 0, to: 0.10 },
+      duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
+  }
+
+  endFever() {
+    this.feverActive = false;
+    if (this.feverOverlay) {
+      this.tweens.killTweensOf(this.feverOverlay);
+      this.tweens.add({
+        targets: this.feverOverlay, alpha: 0, duration: 300,
+        onComplete: () => { this.feverOverlay?.destroy(); this.feverOverlay = null; },
+      });
+    }
+    const { width, height } = this.scale;
+    Juice.flash(this, COLORS.gold, 120);
+    const t = this.add.text(width / 2, height * 0.4, 'FEVER END', {
+      fontFamily: FONT.display, fontSize: '32px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(970).setAlpha(0);
+    this.tweens.add({
+      targets: t, alpha: 1, duration: 150, ease: 'Cubic.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, y: t.y - 20, duration: 400, delay: 200,
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+  }
+
+  showShieldIcon() {
+    const { width } = this.scale;
+    if (this._shieldIcon) this._shieldIcon.destroy();
+    this._shieldIcon = this.add.text(width - 22, 96, '🛡', {
+      fontSize: '28px',
+    }).setOrigin(1, 0.5).setDepth(205);
+    this.tweens.add({
+      targets: this._shieldIcon,
+      alpha: { from: 0.6, to: 1 },
+      duration: 600, yoyo: true, repeat: -1,
+    });
+  }
+
+  clearShieldIcon() {
+    if (this._shieldIcon) {
+      this.tweens.killTweensOf(this._shieldIcon);
+      this._shieldIcon.destroy();
+      this._shieldIcon = null;
     }
   }
 
@@ -832,6 +996,9 @@ export class GameScene extends Phaser.Scene {
 
   endSession() {
     this.isPlaying = false;
+    // 피버/실드 상태 강제 종료
+    if (this.feverActive) { this.feverActive = false; this.feverOverlay?.destroy(); this.feverOverlay = null; }
+    this.clearShieldIcon?.();
     Audio.stopBgm?.({ fadeOut: 0.4 });
 
     // 1) 남아있는 오브를 깔끔히 정리 — 터트리듯 수축 페이드아웃
