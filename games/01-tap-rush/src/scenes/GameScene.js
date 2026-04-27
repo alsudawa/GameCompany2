@@ -17,6 +17,7 @@ import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
   JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  PERFECT_CHAIN, PENALTIES,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -67,6 +68,10 @@ export class GameScene extends Phaser.Scene {
     this.currentLevel = LEVELS[0];
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
+
+    // Perfect Chain 상태
+    this.perfectChainCount = 0;
+    this.lastPerfectAt = 0;
 
     // 풀
     this.orbs = [];
@@ -366,8 +371,8 @@ export class GameScene extends Phaser.Scene {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
 
-    // 추가 보너스 점수
-    const bonus = 300;
+    // 콤보에 따라 보너스 스케일 (기본 300 + 콤보 5단위당 +50)
+    const bonus = 300 + Math.floor(this.combo / 5) * 50;
     const prev = this.score;
     this.score += bonus;
     Juice.countUp(this, this.hudScore, prev, this.score, 220);
@@ -378,9 +383,17 @@ export class GameScene extends Phaser.Scene {
       color: COLORS.magenta, size: 28,
     });
 
-    // 중앙에서 양쪽으로 퍼지는 링 + 플래시
+    // 슬로모 + 카메라 줌 (클라이맥스 순간 강조)
+    Juice.slowmo(this, 0.45, 200);
+    this.tweens.add({
+      targets: this.cameras.main,
+      zoom: { from: 1, to: 1.06 },
+      duration: 140, ease: 'Quad.Out', yoyo: true,
+    });
+
+    // 중앙에서 양쪽으로 퍼지는 링 + 플래시 (링 크기·수 강화)
     Juice.flash(this, COLORS.magenta, 180);
-    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 240, count: 2, duration: 500 });
+    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 340, count: 3, duration: 650 });
     Juice.burst(this, a.x, a.y, { count: 14, color: COLORS.magenta, speed: 300 });
     Juice.burst(this, b.x, b.y, { count: 14, color: COLORS.magenta, speed: 300 });
 
@@ -399,9 +412,14 @@ export class GameScene extends Phaser.Scene {
   onOrbMiss(orb) {
     if (!this.isPlaying) return;
     const { width, height } = this.scale;
-    // 콤보 끊김 (탭은 없었지만 놓쳤다 — 가벼운 벌)
-    if (this.combo > 0) this.resetCombo();
-    // 하단 경계 근처에서 MISS 표시
+    const hadCombo = this.combo > 0;
+    if (hadCombo) this.resetCombo();
+    // 콤보가 있었을 때만 소규모 점수 감점 (긴장감, 최저 0점 보장)
+    if (hadCombo) {
+      this.score = Math.max(0, this.score + PENALTIES.miss);
+      Juice.popText(this, Phaser.Math.Clamp(orb.x, 60, width - 60), height - 100,
+        String(PENALTIES.miss), { color: COLORS.red, size: 22, rise: 20, duration: 500 });
+    }
     this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
   }
 
@@ -633,21 +651,49 @@ export class GameScene extends Phaser.Scene {
     this.tapsMade++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
 
+    // Perfect Chain 배율 계산
+    let chainMul = 1.0;
+    if (judge.tier === 'PERFECT') {
+      if (now - this.lastPerfectAt < PERFECT_CHAIN.windowMs) {
+        this.perfectChainCount++;
+      } else {
+        this.perfectChainCount = 1;
+      }
+      this.lastPerfectAt = now;
+      chainMul = Math.min(1 + this.perfectChainCount * PERFECT_CHAIN.bonusPerCount, PERFECT_CHAIN.maxMul);
+      if (this.perfectChainCount >= 3) {
+        Juice.popText(this, obj.x, obj.y - 90, `CHAIN ×${chainMul.toFixed(2)}`, {
+          color: COLORS.gold, size: 18, rise: 30, duration: 600,
+        });
+      }
+    } else {
+      this.perfectChainCount = 0;
+    }
+
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
-    const mul = comboMul * judge.mul;
+    const mul = comboMul * judge.mul * chainMul;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;
 
-    // 점수 HUD 카운트업 + 펀치
+    // 점수 HUD 카운트업 + 펀치 + 판정 색상 틴트
     Juice.countUp(this, this.hudScore, prevScore, this.score, 260);
     Juice.punch(this, this.hudScore, 1.2, 160);
+    const judgeTintHex = '#' + (JUDGMENT_COLORS[judge.tier] ?? COLORS.cyan).toString(16).padStart(6, '0');
+    this.hudScore.setColor(judgeTintHex);
+    this.time.delayedCall(260, () => { if (this.hudScore?.active) this.hudScore.setColor('#00e5ff'); });
+
+    // PERFECT: 추가 골드 플래시 + 버스트 강화
+    if (judge.tier === 'PERFECT') {
+      Juice.flash(this, COLORS.gold, 100);
+      Juice.ring(this, obj.x, obj.y, { color: COLORS.gold, radius: 110, count: 1, duration: 280 });
+    }
 
     // 파티클·링·플래시 — 오브 자리에 너무 많이 쌓이지 않도록 절제.
-    // 점수 팝업은 오브 위로 충분히 띄워 다음 오브와 겹치지 않게.
     const color = kind === ORB_KIND.RARE ? COLORS.gold : this.skin.color;
-    const burstCount = kind === ORB_KIND.RARE ? 16 : Math.min(6 + Math.floor(this.combo / 2), 14);
+    const burstBase = judge.tier === 'PERFECT' ? 18 : judge.tier === 'GREAT' ? 12 : 8;
+    const burstCount = kind === ORB_KIND.RARE ? 20 : Math.min(burstBase + Math.floor(this.combo / 3), 20);
     Juice.burst(this, obj.x, obj.y, { count: burstCount, color, speed: 240 });
     Juice.ring(this, obj.x, obj.y, {
       color, radius: 60 + Math.min(this.combo * 3, 40),
@@ -664,6 +710,23 @@ export class GameScene extends Phaser.Scene {
     // 배경 맥동 강도 UP
     this.bgIntensity = Math.min(1, 0.15 + this.combo * 0.05);
     this.drawBgPulse();
+
+    // 고콤보 파티클 비 — 10 이상에서 3탭마다 짧은 네온 스트릭
+    if (this.combo >= 10 && this.combo % 3 === 0) {
+      const rainColor = this.combo >= 25 ? COLORS.red : this.combo >= 15 ? COLORS.magenta : this.skin.color;
+      for (let i = 0; i < 5; i++) {
+        this.time.delayedCall(i * 35, () => {
+          if (!this.isPlaying) return;
+          const rx = Phaser.Math.Between(20, this.scale.width - 20);
+          const streak = this.add.rectangle(rx, -10, 2, 10, rainColor, 0.75).setDepth(850);
+          this.tweens.add({
+            targets: streak, y: this.judgmentY + 40, alpha: 0,
+            duration: 700, ease: 'Cubic.In',
+            onComplete: () => streak.destroy(),
+          });
+        });
+      }
+    }
 
     if (kind === ORB_KIND.RARE) {
       Audio.rare();
@@ -711,7 +774,7 @@ export class GameScene extends Phaser.Scene {
 
     // LINK 동시 탭 판정 — 파트너가 최근에 탭됐다면 보너스.
     // 양방향 검증으로 재사용된 오브의 잔존 참조는 배제한다.
-    const LINK_WINDOW = 320;
+    const LINK_WINDOW = 450;  // 320→450: 양손 동시 입력 관대화
     if (obj.linkPartner && obj.linkPartner.linkPartner === obj) {
       const partner = obj.linkPartner;
       const partnerTap = partner.linkTappedAt;

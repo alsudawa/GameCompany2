@@ -2,6 +2,7 @@
 
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
+import { Storage } from '../../../../shared/storage.js';
 import { UI, FONT } from '../../../../shared/ui.js';
 import { GRADE_CUTS, COLORS } from '../config.js';
 
@@ -66,6 +67,16 @@ export class ResultScene extends Phaser.Scene {
         targets: tag, alpha: { from: 0.5, to: 1 },
         duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
+      // 추가 축하 연출
+      this.time.delayedCall(200, () => {
+        Juice.ring(this, width / 2, height * 0.28, { color: COLORS.gold, radius: 200, count: 3, duration: 700 });
+        for (let i = 0; i < 4; i++) {
+          this.time.delayedCall(i * 90, () => {
+            Juice.burst(this, Phaser.Math.Between(60, width - 60), height * 0.3,
+              { count: 10, color: COLORS.gold, speed: 260 });
+          });
+        }
+      });
     }
 
     // Stat 카드 (2x2)
@@ -75,12 +86,17 @@ export class ResultScene extends Phaser.Scene {
     this.drawStatCard(width * 0.27, cardY2, 'COINS  +',   String(d.coins),          0xffd24a);
     this.drawStatCard(width * 0.73, cardY2, 'GEMS   +',   String(d.gems),           0xb388ff);
 
+    // 젬 진행 바 (다음 스킨까지 진행률)
+    const profile = Storage.load();
+    const GEM_GOAL = 100;  // 다음 스킨 해금 목표 젬
+    this.drawGemProgressBar(width / 2, height * 0.83, profile.gems, GEM_GOAL);
+
     // 버튼 — RETRY / MENU
-    this.makeButton(width / 2 - 90, height * 0.89, 160, 60, 'RETRY', 0x00e5ff, () => {
+    this.makeButton(width / 2 - 90, height * 0.91, 160, 60, 'RETRY', 0x00e5ff, () => {
       Audio.tap();
       this.scene.start('GameScene', { stageId: this.stageId });
     });
-    this.makeButton(width / 2 + 90, height * 0.89, 160, 60, 'MENU',  0x6b708f, () => {
+    this.makeButton(width / 2 + 90, height * 0.91, 160, 60, 'MENU',  0x6b708f, () => {
       Audio.tap();
       this.scene.start('MenuScene');
     });
@@ -206,5 +222,45 @@ export class ResultScene extends Phaser.Scene {
           { count: 14, color: COLORS.gold, speed: 280 });
       });
     }
+  }
+
+  drawGemProgressBar(cx, cy, currentGems, goal) {
+    const { width } = this.scale;
+    const barW = width * 0.72, barH = 12;
+    const ratio = Math.min(currentGems / goal, 1);
+    const g = this.add.graphics();
+
+    // 배경 트랙
+    g.fillStyle(0x141428, 1);
+    g.fillRoundedRect(cx - barW / 2, cy - barH / 2, barW, barH, 6);
+    g.lineStyle(1, 0xb388ff, 0.4);
+    g.strokeRoundedRect(cx - barW / 2, cy - barH / 2, barW, barH, 6);
+
+    // 채워진 부분 (트윈으로 성장)
+    const fill = this.add.graphics();
+    fill.fillStyle(0xb388ff, 1);
+    fill.fillRoundedRect(cx - barW / 2, cy - barH / 2, 1, barH, 6);  // 초기 너비 1px
+    this.tweens.addCounter({
+      from: 0, to: barW * ratio,
+      duration: 800, ease: 'Cubic.Out', delay: 500,
+      onUpdate: (t) => {
+        fill.clear();
+        const w = Math.max(1, t.getValue());
+        fill.fillStyle(0xb388ff, 1);
+        fill.fillRoundedRect(cx - barW / 2, cy - barH / 2, w, barH, 6);
+        fill.fillStyle(0xffffff, 0.3);
+        fill.fillRoundedRect(cx - barW / 2, cy - barH / 2, w, barH / 3, 3);
+      },
+    });
+
+    // 라벨
+    this.add.text(cx - barW / 2, cy - barH / 2 - 14, '💎 GEMS  →  NEXT SKIN', {
+      fontFamily: FONT.mono, fontSize: '9px', fontStyle: '700',
+      color: '#8a90b0',
+    }).setLetterSpacing(3);
+    this.add.text(cx + barW / 2, cy - barH / 2 - 14, `${currentGems} / ${goal}`, {
+      fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+      color: '#b388ff',
+    }).setOrigin(1, 0);
   }
 }

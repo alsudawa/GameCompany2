@@ -14,8 +14,13 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#05050c');
 
     Audio.unlockOnFirstInput(this);
-    // 메뉴 BGM — 잔잔한 A 마이너 루프 (유저 제스처 직후 자동 시작)
     Audio.playBgm?.('menu', { fadeIn: 0.6 });
+
+    // 일일 로그인 보너스 — 오늘 첫 방문이면 팝업 표시
+    const bonus = Storage.claimDailyBonus();
+    if (bonus) {
+      this.time.delayedCall(600, () => this.showDailyBonusPopup(bonus));
+    }
 
     // 배경 레이어
     UI.drawGrid(this, width, height, { cell: 40, color: 0x0f1530, alpha: 0.45, depth: -25 });
@@ -361,6 +366,57 @@ export class MenuScene extends Phaser.Scene {
     container.add(cornerG);
 
     return container;
+  }
+
+  showDailyBonusPopup({ gems, streak }) {
+    const { width, height } = this.scale;
+    const panelW = 300, panelH = 200;
+    const px = width / 2 - panelW / 2, py = height / 2 - panelH / 2;
+
+    const shade = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7)
+      .setDepth(800).setAlpha(0);
+    const panel = this.add.graphics().setDepth(801);
+    panel.fillStyle(0x08091a, 1);
+    panel.fillRect(px, py, panelW, panelH);
+    panel.lineStyle(2, COLORS.gold, 0.9);
+    panel.strokeRect(px, py, panelW, panelH);
+
+    const texts = [];
+    texts.push(this.add.text(width / 2, py + 28, 'DAILY BONUS', {
+      fontFamily: '"JetBrains Mono", monospace', fontSize: '13px', fontStyle: '700',
+      color: '#ffd24a',
+    }).setOrigin(0.5).setLetterSpacing(5).setDepth(802));
+
+    const streakLabel = streak >= 2 ? `DAY ${streak} STREAK!` : 'WELCOME BACK!';
+    texts.push(this.add.text(width / 2, py + 54, streakLabel, {
+      fontFamily: '"JetBrains Mono", monospace', fontSize: '11px', fontStyle: '700',
+      color: '#8a90b0',
+    }).setOrigin(0.5).setLetterSpacing(3).setDepth(802));
+
+    const gemText = this.add.text(width / 2, py + 100, `💎  +${gems}`, {
+      fontFamily: '"Orbitron", Arial, sans-serif', fontSize: '42px', fontStyle: '900',
+      color: '#ff2bd6',
+    }).setOrigin(0.5).setDepth(802).setScale(0.5).setAlpha(0);
+    texts.push(gemText);
+    this.tweens.add({
+      targets: gemText, scale: 1, alpha: 1,
+      duration: 400, ease: 'Back.Out',
+    });
+
+    texts.push(this.add.text(width / 2, py + panelH - 22, '▼  TAP TO CLOSE', {
+      fontFamily: '"JetBrains Mono", monospace', fontSize: '10px', fontStyle: '700',
+      color: '#8a90b0',
+    }).setOrigin(0.5).setLetterSpacing(4).setDepth(802));
+
+    this.tweens.add({ targets: shade, alpha: 1, duration: 200 });
+    Juice.burst(this, width / 2, py + 100, { count: 18, color: COLORS.gold, speed: 260 });
+    Juice.ring(this, width / 2, py + 100, { color: COLORS.gold, radius: 160, count: 2, duration: 500 });
+    Audio.fanfare?.();
+
+    shade.setInteractive().on('pointerdown', () => {
+      shade.destroy(); panel.destroy();
+      texts.forEach(t => t.destroy());
+    });
   }
 
   showStudioSheet() {

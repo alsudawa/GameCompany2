@@ -29,17 +29,17 @@ export const PROB = {
 };
 
 // 세션 중 레벨 진행. `at`(초)에 진입, 해당 시점부터 아래 설정 적용.
-// 40초 세션을 5단계로 쪼개 점점 긴박해지게.
+// 초반을 빠르게 압축하고 LVL5 정점을 28초부터 12초간 유지해 클라이맥스를 길게.
 export const LEVELS = [
-  { at:  0, label: 'LVL 1', speed: 340, spawn: 0.38, bomb: 0.06 },
-  { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09 },
-  { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
-  { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
-  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
+  { at:  0, label: 'LVL 1', speed: 340, spawn: 0.42, bomb: 0.05 },
+  { at:  4, label: 'LVL 2', speed: 430, spawn: 0.32, bomb: 0.08 },
+  { at: 10, label: 'LVL 3', speed: 520, spawn: 0.25, bomb: 0.12 },
+  { at: 18, label: 'LVL 4', speed: 600, spawn: 0.18, bomb: 0.15 },
+  { at: 28, label: 'LVL 5', speed: 680, spawn: 0.12, bomb: 0.20 },
 ];
 
 export const COMBO = {
-  windowMs: 720,
+  windowMs: 900,           // 720→900: 모바일 엄지 입력 관대화
   bonusPerStep: 0.09,
   maxMul: 6.0,
 };
@@ -60,13 +60,26 @@ export const COMBO_RANKS = [
   { at: 40, label: 'GOD LIKE!', color: 0xffffff },
 ];
 
-// 세션 중 점수 마일스톤 (달성 시 팡파르)
-export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
+// 세션 중 점수 마일스톤 (달성 시 팡파르). 500pt 미니 + 5000pt 메이저 구분.
+export const SCORE_MILESTONES = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4500, 5000, 6000, 7000, 9000, 12000, 16000, 20000];
 
+// 40초 세션 기준으로 재조정 (기존 60초 대비 ~67% 스케일).
 export const GRADE_CUTS = {
-  S: 25000,   // 밸런스 재조정 (세션 짧아짐 반영)
-  A: 12000,
-  B: 4000,
+  S: 16000,
+  A: 8000,
+  B: 2500,
+};
+
+// 연속 PERFECT 체인 보너스 — 스킬 플레이어에게 추가 배율 제공.
+export const PERFECT_CHAIN = {
+  windowMs: 1200,          // 마지막 PERFECT 이후 이 시간 내에 또 PERFECT면 체인 지속
+  bonusPerCount: 0.15,     // 체인 1개당 +15% 배율
+  maxMul: 2.0,             // 체인 배율 상한
+};
+
+// 실수 패널티 — 긴장감 부여 (최저 0점 보장).
+export const PENALTIES = {
+  miss: -50,   // 오브 놓침 (콤보가 있을 때만)
 };
 
 // 타이밍 판정 — 화면 중하단에 "TAP ZONE" 라인.

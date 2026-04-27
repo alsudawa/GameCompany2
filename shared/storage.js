@@ -13,6 +13,7 @@ const DEFAULT_PROFILE = {
   bestScores: {},          // { 'tap-rush': 12345, ... }
   achievements: [],        // ['first_combo_10', ...]
   lastLoginISO: null,
+  loginStreak: 0,          // 연속 출석 일수
   firstPurchaseDone: false,
   seasonPass: { active: false, expiresISO: null, claimed: [] },
 };
@@ -94,5 +95,25 @@ export const Storage = {
   update(patch) {
     const p = this.load();
     this.save({ ...p, ...patch });
+  },
+
+  // 일일 로그인 보너스. 오늘 첫 방문이면 젬을 지급하고 스트릭을 갱신.
+  // 반환: { gems, streak } 또는 null (이미 오늘 받음).
+  claimDailyBonus() {
+    const p = this.load();
+    const today = new Date().toISOString().slice(0, 10);           // 'YYYY-MM-DD'
+    const lastDate = p.lastLoginISO ? p.lastLoginISO.slice(0, 10) : null;
+
+    if (lastDate === today) return null;  // 이미 오늘 수령
+
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const streak = lastDate === yesterday ? (p.loginStreak || 0) + 1 : 1;
+    const gems = Math.min(10 + (streak - 1) * 5, 50);  // 1일차 10젬, 매일 +5, 최대 50
+
+    p.loginStreak = streak;
+    p.lastLoginISO = new Date().toISOString();
+    p.gems = Math.max(0, (p.gems || 0) + gems);
+    this.save(p);
+    return { gems, streak };
   },
 };
