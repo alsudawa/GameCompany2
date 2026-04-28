@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - claude/game-studio-team-project-nFUGo
+      - claude/king-shot-game-MMOr4
   workflow_dispatch:
 
 permissions:
