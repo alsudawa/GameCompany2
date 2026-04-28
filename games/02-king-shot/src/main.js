@@ -5,6 +5,7 @@ import { GAME } from './config.js';
 import { BootScene } from './scenes/BootScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
+import { UpgradeScene } from './scenes/UpgradeScene.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -17,7 +18,7 @@ const config = {
     height: GAME.height,
   },
   input: { activePointers: 4 },
-  scene: [BootScene, MenuScene, GameScene],
+  scene: [BootScene, MenuScene, GameScene, UpgradeScene],
 };
 
 new Phaser.Game(config);

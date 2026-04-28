@@ -160,3 +160,138 @@ export const GRADE_CUTS = {
   A: 4500,
   B: 2000,
 };
+
+// ── 웨이브 ──
+// 일반 웨이브 4 + 보스 1. 각 웨이브는 (duration초 동안 스폰) 후 모든 적 소탕될 때까지 지속.
+// spawnRate는 베이스 간격(낮을수록 빠름).
+export const WAVES = [
+  {
+    label: 'WAVE 1',
+    duration: 12,
+    spawnRate: 1.20,
+    weights: [
+      { kind: ENEMY_KIND.GOBLIN, w: 0.70 },
+      { kind: ENEMY_KIND.WOLF,   w: 0.18 },
+      { kind: ENEMY_KIND.ARCHER, w: 0.10 },
+      { kind: ENEMY_KIND.GOLDEN, w: 0.02 },
+    ],
+  },
+  {
+    label: 'WAVE 2',
+    duration: 13,
+    spawnRate: 1.00,
+    weights: [
+      { kind: ENEMY_KIND.GOBLIN, w: 0.45 },
+      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
+      { kind: ENEMY_KIND.ORC,    w: 0.10 },
+      { kind: ENEMY_KIND.ARCHER, w: 0.12 },
+      { kind: ENEMY_KIND.GOLDEN, w: 0.03 },
+    ],
+  },
+  {
+    label: 'WAVE 3',
+    duration: 14,
+    spawnRate: 0.85,
+    weights: [
+      { kind: ENEMY_KIND.GOBLIN, w: 0.30 },
+      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
+      { kind: ENEMY_KIND.ORC,    w: 0.18 },
+      { kind: ENEMY_KIND.ARCHER, w: 0.18 },
+      { kind: ENEMY_KIND.GOLDEN, w: 0.04 },
+    ],
+  },
+  {
+    label: 'WAVE 4',
+    duration: 15,
+    spawnRate: 0.72,
+    weights: [
+      { kind: ENEMY_KIND.GOBLIN, w: 0.22 },
+      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
+      { kind: ENEMY_KIND.ORC,    w: 0.25 },
+      { kind: ENEMY_KIND.ARCHER, w: 0.18 },
+      { kind: ENEMY_KIND.GOLDEN, w: 0.05 },
+    ],
+  },
+  {
+    label: 'WAVE 5',
+    duration: 0,           // 보스 웨이브 — 보스 등장 (Step 5)
+    boss: true,
+  },
+];
+
+// ── 업그레이드 ──
+// apply(weapon, king) 함수에서 즉시 효과 부여.
+export const UPGRADES = [
+  {
+    id: 'rapid', name: 'RAPID FIRE', glyph: '➶',
+    desc: '활시위가 빨라진다',
+    color: 0xf4c542,
+    apply: (w) => { w.fireRate = Math.max(0.07, w.fireRate * 0.78); },
+  },
+  {
+    id: 'multi', name: 'TWIN ARROWS', glyph: '⫷',
+    desc: '한 번에 화살 +1',
+    color: 0xb38aff,
+    apply: (w) => { w.multishot += 1; },
+  },
+  {
+    id: 'pierce', name: 'PIERCE', glyph: '↠',
+    desc: '화살이 적을 관통',
+    color: 0x8ad0ff,
+    apply: (w) => { w.pierce += 1; },
+  },
+  {
+    id: 'damage', name: 'SHARP STEEL', glyph: '⚔',
+    desc: '데미지 +1',
+    color: 0xe0b070,
+    apply: (w) => { w.damage += 1; },
+  },
+  {
+    id: 'crit', name: 'CRIT EYE', glyph: '✦',
+    desc: '크리티컬 확률 +10%',
+    color: 0xffd070,
+    apply: (w) => { w.crit = Math.min(0.85, w.crit + 0.10); },
+  },
+  {
+    id: 'speed', name: 'SWIFT BOOTS', glyph: '⇶',
+    desc: '왕의 이동 속도 +15%',
+    color: 0x9ad0a0,
+    apply: (w, k) => { k.moveSpeed *= 1.15; },
+  },
+  {
+    id: 'maxhp', name: 'IRON THRONE', glyph: '♥',
+    desc: '최대 HP +1, HP 회복',
+    color: 0xff7080,
+    apply: (w, k) => { k.maxHp += 1; k.hp = k.maxHp; },
+  },
+  {
+    id: 'projspeed', name: 'TAUT BOWSTRING', glyph: '➟',
+    desc: '화살 속도 +30%',
+    color: 0xc0e0ff,
+    apply: (w) => { w.projectileSpeed *= 1.3; },
+  },
+  {
+    id: 'lifesteal', name: 'BLOOD CROWN', glyph: '✝',
+    desc: '15% 확률로 처치 시 HP +1',
+    color: 0xc8302d,
+    apply: (w) => { w.lifesteal = (w.lifesteal || 0) + 0.15; },
+  },
+  {
+    id: 'magnet', name: 'GEM MAGNET', glyph: '◈',
+    desc: '아이템 자석 범위 확대',
+    color: 0x4a8bc2,
+    apply: (w, k) => { k.magnetRadius = (k.magnetRadius || 140) + 80; },
+  },
+];
+
+// 무기 베이스 스탯 (King.js 안에도 있지만 여기서 한 번 더 정의 — 기획자가 보기 쉽게)
+export const WEAPON_BASE = {
+  damage: 1,
+  fireRate: 0.28,
+  projectileSpeed: 760,
+  multishot: 1,
+  pierce: 0,
+  splashRadius: 0,
+  crit: 0.05,
+  lifesteal: 0,
+};

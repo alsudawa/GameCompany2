@@ -1,7 +1,7 @@
 // GameScene — 메인 플레이.
 // Step 3: 적 5종 스폰 + 화살×적/적×왕 충돌 + 콤보 시스템 + HUD(HP/SCORE/KILLS/콤보).
 
-import { COLORS, FONT, GAME, getStage, ENEMY_KIND, ENEMY_TYPES, COMBO, COMBO_RANKS } from '../config.js';
+import { COLORS, FONT, GAME, getStage, ENEMY_KIND, ENEMY_TYPES, COMBO, COMBO_RANKS, WAVES } from '../config.js';
 import { King } from '../entities/King.js';
 import { Bullet, BULLET_KIND } from '../entities/Bullet.js';
 import { Enemy } from '../entities/Enemy.js';
@@ -12,17 +12,6 @@ const BULLET_POOL = 80;
 const ENEMY_BULLET_POOL = 32;
 const ENEMY_POOL = 40;
 
-// Step 3 임시 스폰 가중치 (Step 4에서 웨이브로 교체)
-const SPAWN_WEIGHTS = [
-  { kind: ENEMY_KIND.GOBLIN, w: 0.50 },
-  { kind: ENEMY_KIND.WOLF,   w: 0.22 },
-  { kind: ENEMY_KIND.ORC,    w: 0.10 },
-  { kind: ENEMY_KIND.ARCHER, w: 0.13 },
-  { kind: ENEMY_KIND.GOLDEN, w: 0.05 },
-];
-const SPAWN_INTERVAL_START = 1.4;
-const SPAWN_INTERVAL_MIN = 0.5;
-const SPAWN_RAMP_SECS = 60;
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -82,10 +71,16 @@ export class GameScene extends Phaser.Scene {
     this.bestCombo = 0;
     this.lastKillAt = 0;
     this.reachedRanks = new Set();
-    this.spawnTimer = 0.5;
+    this.gemsEarned = 0;
+    this.spawnTimer = 1.5;
     this.elapsed = 0;
     this.isPlaying = false;
     this.isOver = false;
+    // 웨이브
+    this.waveIdx = 0;
+    this.waveTimeLeft = WAVES[0]?.duration ?? 12;
+    this.waveSpawnsLeft = true;        // 이 웨이브 동안 스폰 진행 중
+    this.waveBetween = false;            // 웨이브 사이 (잠시 정적)
 
     // ── 입력: 드래그 → 왕 이동 ──
     this.input.on('pointerdown', (p) => this.handlePointer(p));
@@ -177,14 +172,8 @@ export class GameScene extends Phaser.Scene {
 
     this.elapsed += dt;
 
-    // ── 적 스폰 ──
-    this.spawnTimer -= dt;
-    if (this.spawnTimer <= 0) {
-      this.spawnEnemy();
-      const ramp = Math.min(1, this.elapsed / SPAWN_RAMP_SECS);
-      const interval = SPAWN_INTERVAL_START + (SPAWN_INTERVAL_MIN - SPAWN_INTERVAL_START) * ramp;
-      this.spawnTimer = interval * (0.85 + Math.random() * 0.3);
-    }
+    // ── 웨이브 진행 ──
+    this.tickWave(dt);
 
     // ── 적 업데이트 ──
     const kingPos = { x: this.king.x, y: this.king.y };
@@ -261,19 +250,139 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnEnemy() {
+    const wave = WAVES[this.waveIdx];
+    if (!wave || !wave.weights) return;
     const e = this.enemies.find(e => !e.alive);
     if (!e) return;
-    // 가중치 무작위
-    const r = Math.random();
-    let acc = 0;
+    // 현재 웨이브의 가중치
+    const totalW = wave.weights.reduce((s, ww) => s + ww.w, 0);
+    let r = Math.random() * totalW;
     let kind = ENEMY_KIND.GOBLIN;
-    for (const w of SPAWN_WEIGHTS) {
-      acc += w.w;
-      if (r < acc) { kind = w.kind; break; }
+    for (const ww of wave.weights) {
+      r -= ww.w;
+      if (r <= 0) { kind = ww.kind; break; }
     }
     const x = 40 + Math.random() * (this.scale.width - 80);
     const y = -30;
     e.reset(x, y, kind, this.stage.hpMul);
+  }
+
+  // ── 웨이브 ──
+  tickWave(dt) {
+    if (this.waveBetween) return;
+    const wave = WAVES[this.waveIdx];
+    if (!wave) return;
+
+    // 보스 웨이브는 Step 5에서 처리 — 지금은 스폰 안 함
+    if (wave.boss) {
+      // 임시: 보스 웨이브 진입 시 즉시 클리어 처리 → 결과 안내
+      if (!this._bossPlaceholderShown) {
+        this._bossPlaceholderShown = true;
+        this.showBossPlaceholder();
+      }
+      return;
+    }
+
+    // 스폰
+    if (this.waveSpawnsLeft) {
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0) {
+        this.spawnEnemy();
+        const rate = wave.spawnRate * (this.stage.spawnMul ?? 1);
+        this.spawnTimer = rate * (0.85 + Math.random() * 0.3);
+      }
+      this.waveTimeLeft -= dt;
+      if (this.waveTimeLeft <= 0) {
+        this.waveSpawnsLeft = false;
+      }
+    }
+
+    // 스폰 끝났고 살아있는 적 0이면 웨이브 클리어
+    if (!this.waveSpawnsLeft && !this.enemies.some(e => e.alive)) {
+      this.endWave();
+    }
+  }
+
+  endWave() {
+    this.waveBetween = true;
+    Audio.levelUp();
+
+    const isFinalNonBoss = this.waveIdx >= WAVES.length - 2;
+    const nextIsBoss = WAVES[this.waveIdx + 1]?.boss;
+
+    // 클리어 배너
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 20,
+      'WAVE CLEAR', {
+        fontFamily: FONT.display, fontSize: '44px', fontStyle: '900',
+        color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+      }).setOrigin(0.5).setDepth(600);
+    big.setLetterSpacing?.(4);
+    this.tweens.add({
+      targets: big, scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 360, ease: 'Back.Out',
+    });
+
+    Juice.flash(this, COLORS.gold, 240);
+    Juice.ring(this, this.king.x, this.king.y,
+      { color: COLORS.gold, radius: 220, duration: 600, count: 2 });
+
+    // 1.0초 뒤 업그레이드 카드 (보스 웨이브 직전 마지막은 픽 후 보스 진입)
+    this.time.delayedCall(1000, () => {
+      this.tweens.add({
+        targets: big, alpha: 0, duration: 220,
+        onComplete: () => big.destroy(),
+      });
+      this.scene.pause();
+      this.scene.launch('UpgradeScene', {
+        king: this.king,
+        weapon: this.king.weapon,
+        waveLabel: nextIsBoss ? 'BOSS APPROACHES' : 'WAVE CLEAR',
+        onPick: () => {
+          this.scene.resume();
+          this.startNextWave();
+        },
+      });
+    });
+  }
+
+  startNextWave() {
+    this.waveIdx++;
+    this.waveBetween = false;
+    const wave = WAVES[this.waveIdx];
+    if (!wave) return;
+    this.waveSpawnsLeft = !wave.boss;
+    this.waveTimeLeft = wave.duration ?? 0;
+    this.spawnTimer = 0.4;
+    this.reachedRanks = new Set();   // 콤보 등급 재취득 가능
+    this.combo = 0;
+    this.updateComboText();
+
+    // HUD WAVE 표시 갱신
+    if (this.hudWave) {
+      this.hudWave.setText(`WAVE ${this.waveIdx + 1}/${WAVES.length}`);
+      Juice.punch(this, this.hudWave, 1.3, 200);
+    }
+  }
+
+  // 보스 자리 (Step 5에서 실제 보스 등장)
+  showBossPlaceholder() {
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2,
+      'BOSS WAVE\n(STEP 5에서 등장)', {
+        fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
+        color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 5,
+        align: 'center',
+      }).setOrigin(0.5).setDepth(600);
+    big.setLetterSpacing?.(3);
+    Audio.fanfare();
+    Juice.flash(this, COLORS.capeRed, 320);
+    // 4초 뒤 메뉴로
+    this.time.delayedCall(4000, () => {
+      Audio.stopBgm({ fadeOut: 0.6 });
+      this.cameras.main.fadeOut(400, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('MenuScene');
+      });
+    });
   }
 
   // ── 충돌 ──
@@ -534,6 +643,12 @@ export class GameScene extends Phaser.Scene {
       fontFamily: FONT.display, fontSize: '14px', fontStyle: '700',
       color: '#3e2e1e',
     }).setOrigin(0, 0).setDepth(101).setLetterSpacing?.(2);
+
+    // 좌상단 패널 아래: WAVE 표시
+    this.hudWave = this.add.text(24 + 8, 72, 'WAVE 1/5', {
+      fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+      color: '#f4c542',
+    }).setOrigin(0, 0).setDepth(101).setLetterSpacing?.(3);
 
     // 중앙 상단: 킬 카운터
     this.add.text(this.scale.width / 2, 24, 'KILLS', {
