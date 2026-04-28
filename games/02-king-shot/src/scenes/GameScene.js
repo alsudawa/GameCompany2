@@ -5,12 +5,17 @@ import { COLORS, FONT, GAME, getStage, ENEMY_KIND, ENEMY_TYPES, COMBO, COMBO_RAN
 import { King } from '../entities/King.js';
 import { Bullet, BULLET_KIND } from '../entities/Bullet.js';
 import { Enemy } from '../entities/Enemy.js';
+import { Boss } from '../entities/Boss.js';
+import { Pickup, PICKUP_KIND } from '../entities/Pickup.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
+import { Storage } from '../../../../shared/storage.js';
+import { Analytics } from '../../../../shared/analytics.js';
 
 const BULLET_POOL = 80;
 const ENEMY_BULLET_POOL = 32;
 const ENEMY_POOL = 40;
+const PICKUP_POOL = 30;
 
 
 export class GameScene extends Phaser.Scene {
@@ -54,6 +59,18 @@ export class GameScene extends Phaser.Scene {
       e.setDepth(45);
       this.enemies.push(e);
     }
+
+    // ── 풀: 픽업 ──
+    this.pickups = [];
+    for (let i = 0; i < PICKUP_POOL; i++) {
+      const p = new Pickup(this);
+      p.setDepth(48);
+      this.pickups.push(p);
+    }
+
+    // ── 보스 (1마리, 보스 웨이브 진입 시 reset) ──
+    this.boss = new Boss(this);
+    this.boss.setDepth(46);
 
     // ── 왕 배치 ──
     this.king = new King(this);
@@ -203,6 +220,27 @@ export class GameScene extends Phaser.Scene {
 
     // ── 적 vs 왕 접촉 데미지 ──
     this.checkEnemyContactKing(dt);
+
+    // ── 보스 ──
+    if (this.boss.alive) {
+      this.boss.update(dt, this, kingPos);
+      // 보스가 화살에 맞나
+      this.checkBulletVsBoss();
+    }
+
+    // ── 픽업 ──
+    const magnetR = this.king.magnetRadius || 140;
+    for (const p of this.pickups) {
+      if (!p.alive) continue;
+      p.update(dt, this, kingPos, magnetR);
+      if (!p.alive) continue;
+      const dx = p.x - this.king.x;
+      const dy = p.y - this.king.y;
+      const r = this.king.hitRadius + 8;
+      if (dx * dx + dy * dy < r * r) {
+        this.collectPickup(p);
+      }
+    }
 
     // ── 콤보 윈도우 종료 ──
     if (this.combo > 0 && (this.time.now - this.lastKillAt) > COMBO.windowMs) {
@@ -364,23 +402,148 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // 보스 자리 (Step 5에서 실제 보스 등장)
+  // 보스 등장
   showBossPlaceholder() {
-    const big = this.add.text(this.scale.width / 2, this.scale.height / 2,
-      'BOSS WAVE\n(STEP 5에서 등장)', {
-        fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
-        color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 5,
-        align: 'center',
-      }).setOrigin(0.5).setDepth(600);
-    big.setLetterSpacing?.(3);
     Audio.fanfare();
-    Juice.flash(this, COLORS.capeRed, 320);
-    // 4초 뒤 메뉴로
-    this.time.delayedCall(4000, () => {
-      Audio.stopBgm({ fadeOut: 0.6 });
-      this.cameras.main.fadeOut(400, 0, 0, 0);
+    // 빨간 비네트
+    Juice.flash(this, COLORS.capeRed, 280);
+    Juice.shake(this, 0.022, 320);
+
+    // 거대 BOSS 텍스트 컷씬
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'BOSS', {
+      fontFamily: FONT.display, fontSize: '92px', fontStyle: '900',
+      color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 8,
+    }).setOrigin(0.5).setDepth(700);
+    big.setLetterSpacing?.(8);
+    this.tweens.add({
+      targets: big, scale: { from: 1.8, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 360, ease: 'Back.Out',
+    });
+    this.tweens.add({
+      targets: big, alpha: 0, y: big.y - 30,
+      delay: 900, duration: 360,
+      onComplete: () => big.destroy(),
+    });
+
+    // 1.1초 뒤 보스 reset
+    this.time.delayedCall(1100, () => {
+      this.boss.reset(this.scale.width / 2, -80, this.stage.hpMul);
+    });
+  }
+
+  // ── 보스 vs 화살 ──
+  checkBulletVsBoss() {
+    const b = this.boss;
+    if (!b.alive) return;
+    for (const bullet of this.bullets) {
+      if (!bullet.alive) continue;
+      const dx = bullet.x - b.x;
+      const dy = bullet.y - b.y;
+      const r = b.hitRadius + 6;
+      if (dx * dx + dy * dy < r * r) {
+        const isCrit = Math.random() < (bullet.crit ?? 0);
+        const dmg = bullet.dmg * (isCrit ? 2 : 1);
+        const { killed } = b.takeHit(dmg);
+        Juice.spark(this, bullet.x, bullet.y, COLORS.sparkYellow, 14);
+        Juice.popText(this, b.x + (Math.random() - 0.5) * 30, b.y - 30 + (Math.random() - 0.5) * 8,
+          `-${dmg}`, { color: isCrit ? 0xffd24a : 0xffe6a0, size: isCrit ? 18 : 14, rise: 28, duration: 460 });
+        if ((bullet.pierceLeft ?? 0) > 0) bullet.pierceLeft -= 1;
+        else bullet.deactivate();
+        if (killed) {
+          this.onBossKilled();
+          return;
+        }
+      }
+    }
+  }
+
+  onBossKilled() {
+    Audio.fanfare();
+    Juice.slowmo(this, 0.35, 600);
+    Juice.flash(this, COLORS.gold, 380);
+    Juice.shake(this, 0.025, 420);
+    Juice.ring(this, this.boss.x, this.boss.y,
+      { color: COLORS.gold, radius: 260, duration: 700, count: 4 });
+
+    // 점수 보상
+    this.score += this.boss.score;
+    this.kills += 1;
+    this.updateScoreText();
+    this.updateKillsText();
+
+    // 금화/젬 샤워
+    const cx = this.boss.x, cy = this.boss.y;
+    for (let i = 0; i < this.boss.coinDrop; i++) {
+      this.time.delayedCall(i * 28, () => this.spawnPickup(cx + (Math.random() - 0.5) * 30,
+        cy + (Math.random() - 0.5) * 20, PICKUP_KIND.COIN));
+    }
+    for (let i = 0; i < this.boss.gemDrop; i++) {
+      this.time.delayedCall(i * 60, () => this.spawnPickup(cx + (Math.random() - 0.5) * 40,
+        cy + (Math.random() - 0.5) * 20, PICKUP_KIND.GEM));
+    }
+
+    this.boss.pop();
+
+    // 1.6초 뒤 결과 화면
+    this.time.delayedCall(1800, () => this.endSession({ victory: true }));
+  }
+
+  // ── 픽업 ──
+  spawnPickup(x, y, kind) {
+    const p = this.pickups.find(p => !p.alive);
+    if (!p) return;
+    p.reset(x, y, kind);
+  }
+
+  collectPickup(p) {
+    if (p.kind === PICKUP_KIND.GEM) {
+      this.gemsEarned += 1;
+      Juice.popText(this, p.x, p.y - 14, '+1 GEM', { color: COLORS.gemBlue, size: 12, rise: 30, duration: 400 });
+    } else if (p.kind === PICKUP_KIND.HEART) {
+      if (this.king.hp < this.king.maxHp) {
+        this.king.hp += 1;
+        this.updateHpHearts();
+        Juice.popText(this, p.x, p.y - 14, '+1 HP', { color: COLORS.heartRed, size: 12, rise: 30, duration: 400 });
+      }
+    } else if (p.kind === PICKUP_KIND.COIN) {
+      this.coinsEarned = (this.coinsEarned || 0) + 1;
+      this.score += 5;
+    }
+    Juice.spark(this, p.x, p.y, COLORS.sparkYellow, 12);
+    p.deactivate();
+  }
+
+  // ── 세션 종료 ──
+  endSession({ victory }) {
+    if (this.isOver) return;
+    this.isOver = true;
+    Audio.stopBgm({ fadeOut: 0.6 });
+
+    const profile = Storage.load();
+    const prevBest = profile.bestScores?.['king-shot'] || 0;
+    const isBest = Storage.setBestScore('king-shot', this.score);
+    if (this.gemsEarned > 0) Storage.addGems(this.gemsEarned);
+    if (this.coinsEarned > 0) Storage.addCoins(this.coinsEarned || 0);
+    Analytics.track('session_end', {
+      game: 'king-shot', stage: this.stage.id,
+      score: this.score, kills: this.kills,
+      bestCombo: this.bestCombo, victory: !!victory, isBest,
+    });
+
+    this.time.delayedCall(900, () => {
+      this.cameras.main.fadeOut(420, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('MenuScene');
+        this.scene.start('ResultScene', {
+          victory: !!victory,
+          score: this.score,
+          best: Math.max(prevBest, this.score),
+          isBest,
+          kills: this.kills,
+          bestCombo: this.bestCombo,
+          gemsEarned: this.gemsEarned,
+          coinsEarned: this.coinsEarned || 0,
+          stageId: this.stage.id,
+        });
       });
     });
   }
@@ -462,7 +625,27 @@ export class GameScene extends Phaser.Scene {
     this.score += gained;
     this.kills += 1;
     if (e.kind === ENEMY_KIND.GOLDEN) {
-      this.gemsEarned = (this.gemsEarned ?? 0) + (e.gems || 1);
+      // 처치 위치에 젬 드롭 (자동 수집은 픽업 자석으로)
+      for (let i = 0; i < (e.gems || 2); i++) {
+        this.spawnPickup(e.x + (Math.random() - 0.5) * 16,
+                        e.y + (Math.random() - 0.5) * 8, PICKUP_KIND.GEM);
+      }
+    }
+    // 5% 확률로 일반 적이 코인 드롭, 1% 확률로 하트
+    const lootRoll = Math.random();
+    if (lootRoll < 0.012 && this.king.hp < this.king.maxHp) {
+      this.spawnPickup(e.x, e.y, PICKUP_KIND.HEART);
+    } else if (lootRoll < 0.10) {
+      this.spawnPickup(e.x, e.y, PICKUP_KIND.COIN);
+    }
+    // 라이프스틸 적용
+    if ((this.king.weapon.lifesteal || 0) > 0 &&
+        Math.random() < this.king.weapon.lifesteal &&
+        this.king.hp < this.king.maxHp) {
+      this.king.hp += 1;
+      this.updateHpHearts();
+      Juice.popText(this, this.king.x, this.king.y - 30, '+1 HP',
+        { color: COLORS.heartRed, size: 12, rise: 24, duration: 400 });
     }
 
     // 연출
@@ -524,13 +707,7 @@ export class GameScene extends Phaser.Scene {
       scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },
       duration: 500, ease: 'Back.Out',
     });
-    Audio.stopBgm({ fadeOut: 0.6 });
-    this.time.delayedCall(2200, () => {
-      this.cameras.main.fadeOut(400, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('MenuScene');
-      });
-    });
+    this.time.delayedCall(1500, () => this.endSession({ victory: false }));
   }
 
   spawnSmokePuffs(x, y) {
