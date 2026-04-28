@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>King Shot · GameCompany2</title>
+
+  <!-- 중세 판타지 톤: Cinzel(세리프) + Rajdhani(본문) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-0: #0d1810;
+      --bg-1: #1a2a18;
+      --gold: #f4c542;
+      --gold-deep: #c89438;
+      --parchment: #f4e8c8;
+      --wood-dark: #3e2e1e;
+      --cape-red: #c8302d;
+      --text: #f0e6d0;
+      --dim: #8a8470;
+    }
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      background: var(--bg-0);
+      color: var(--text);
+      overflow: hidden;
+      font-family: "Rajdhani", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overscroll-behavior: none;
+      touch-action: manipulation;
+    }
+
+    /* 따뜻한 깊은 숲/돌바닥 비네트 — 사이버펑크 스캔라인 없음 */
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(244, 197, 66, 0.06), transparent 55%),
+        radial-gradient(circle at 50% 100%, rgba(13, 24, 16, 0.6), transparent 60%),
+        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #game-root {
+      position: relative; z-index: 1;
+      width: 100vw; height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+    }
+    canvas { touch-action: none; display: block; }
+
+    /* 좌상단 런처 복귀 — 우드/골드 톤 */
+    .back-link {
+      position: fixed; top: 14px; left: 14px; z-index: 10;
+      color: var(--dim); text-decoration: none;
+      font-family: "Cinzel", "JetBrains Mono", monospace;
+      font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+      background: rgba(62, 46, 30, 0.7);
+      padding: 8px 14px; border-radius: 2px;
+      border: 1px solid rgba(244, 197, 66, 0.35);
+      transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    .back-link:hover {
+      color: var(--gold);
+      border-color: var(--gold);
+      box-shadow: 0 0 14px rgba(244, 197, 66, 0.35);
+    }
+
+    /* 우하단 시그널 — 골드 깜빡임 */
+    .sigil {
+      position: fixed; bottom: 14px; right: 14px; z-index: 10;
+      display: flex; gap: 6px; align-items: center;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px; letter-spacing: 2px;
+      color: var(--dim);
+    }
+    .sigil .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 10px var(--gold);
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+  </style>
+</head>
+<body>
+  <a class="back-link" href="../../index.html">◂ LAUNCHER</a>
+  <div class="sigil"><span class="dot"></span> GC2 · KING SHOT · v1</div>
+  <div id="game-root"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
