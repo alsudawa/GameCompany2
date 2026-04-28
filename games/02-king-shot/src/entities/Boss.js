@@ -4,6 +4,13 @@
 
 import { COLORS } from '../config.js';
 
+function darkenHex(hex, amount = 0.3) {
+  const r = Math.max(0, Math.floor(((hex >> 16) & 0xff) * (1 - amount)));
+  const g = Math.max(0, Math.floor(((hex >> 8) & 0xff) * (1 - amount)));
+  const b = Math.max(0, Math.floor((hex & 0xff) * (1 - amount)));
+  return (r << 16) | (g << 8) | b;
+}
+
 export class Boss extends Phaser.GameObjects.Container {
   constructor(scene) {
     super(scene, 0, 0);
@@ -40,16 +47,18 @@ export class Boss extends Phaser.GameObjects.Container {
     this.setVisible(false).setActive(false);
   }
 
-  reset(x, y, hpMul = 1) {
+  reset(x, y, hpMul = 1, info = null) {
     this.alive = true;
     this.maxHp = Math.round(60 * hpMul);
     this.hp = this.maxHp;
     this.phase = 0;
     this.attackTimer = 1.6;
     this.telegraphState = null;
+    this.bossInfo = info ?? { name: 'OGRE LORD', color: COLORS.orcRed, weaponColor: COLORS.woodBrown };
     this.setPosition(x, y);
     this.setAlpha(0).setScale(0.6);
     this.setVisible(true).setActive(true);
+    if (this._labelText) { this._labelText.destroy(); this._labelText = null; }
     this.draw();
 
     // 등장 — 위에서 떨어지듯 + 셰이크
@@ -69,15 +78,15 @@ export class Boss extends Phaser.GameObjects.Container {
     this.shadow.fillEllipse(0, 56, 130, 22);
 
     this.aura.clear();
-    const auraCol = this.phase >= 1 ? COLORS.capeRed : COLORS.orcRed;
+    const auraCol = this.phase >= 1 ? COLORS.capeRed : (this.bossInfo?.color ?? COLORS.orcRed);
     this.aura.fillStyle(auraCol, 0.18);
     this.aura.fillCircle(0, 0, 80);
     this.aura.fillStyle(auraCol, 0.1);
     this.aura.fillCircle(0, 0, 110);
 
     // ── 몸 (큰 둥근 사각) ──
-    const c = COLORS.orcRed;
-    const dk = 0x4a1a10;
+    const c = this.bossInfo?.color ?? COLORS.orcRed;
+    const dk = darkenHex(c, 0.45);
     this.body.clear();
     this.body.fillStyle(dk, 1);
     this.body.fillRoundedRect(-46, -16, 92, 76, 18);
@@ -136,15 +145,17 @@ export class Boss extends Phaser.GameObjects.Container {
     w.x = 60;
     w.y = -10;
     w.rotation = this._weaponAngle;
+    const wcol = this.bossInfo?.weaponColor ?? COLORS.woodBrown;
+    const wdk = darkenHex(wcol, 0.4);
     // 손잡이
-    w.fillStyle(COLORS.woodDark, 1);
+    w.fillStyle(wdk, 1);
     w.fillRect(-3, -12, 6, 50);
-    w.fillStyle(COLORS.woodBrown, 1);
+    w.fillStyle(wcol, 1);
     w.fillRect(-2, -10, 4, 46);
     // 머리 (사각 곤봉)
-    w.fillStyle(COLORS.woodDark, 1);
+    w.fillStyle(wdk, 1);
     w.fillRoundedRect(-12, -28, 24, 22, 6);
-    w.fillStyle(0x6a4a30, 1);
+    w.fillStyle(wcol, 1);
     w.fillRoundedRect(-10, -26, 20, 18, 5);
     // 못
     w.fillStyle(COLORS.gold, 1);
@@ -184,9 +195,10 @@ export class Boss extends Phaser.GameObjects.Container {
     g.lineStyle(1, COLORS.gold, 0.9);
     g.strokeRect(-w / 2, y, w, h);
 
-    // 보스 라벨
+    // 보스 라벨 (스테이지별 동적)
     if (!this._labelText) {
-      this._labelText = this.scene.add.text(0, y - 14, 'OGRE LORD', {
+      const name = this.bossInfo?.name ?? 'BOSS';
+      this._labelText = this.scene.add.text(0, y - 14, name, {
         fontFamily: '"Cinzel", Georgia, serif',
         fontSize: '14px', fontStyle: '900',
         color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,

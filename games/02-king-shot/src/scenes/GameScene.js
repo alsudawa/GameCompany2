@@ -34,9 +34,10 @@ export class GameScene extends Phaser.Scene {
 
     Audio.unlockOnFirstInput(this);
 
-    // 배경 (잔디 타일 + 좌우 돌담)
+    // 배경 (잔디 타일 + 좌우 돌담 + 스테이지 분위기)
     this.drawTileGround(width, height);
     this.drawSideWalls(width, height);
+    this.setupStageAtmosphere(width, height);
 
     // ── 풀: 화살 (왕/적) ──
     this.bullets = [];
@@ -425,9 +426,9 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => big.destroy(),
     });
 
-    // 1.1초 뒤 보스 reset
+    // 1.1초 뒤 보스 reset (스테이지별 보스 정보 전달)
     this.time.delayedCall(1100, () => {
-      this.boss.reset(this.scale.width / 2, -80, this.stage.hpMul);
+      this.boss.reset(this.scale.width / 2, -80, this.stage.hpMul, this.stage.boss);
     });
   }
 
@@ -794,6 +795,105 @@ export class GameScene extends Phaser.Scene {
       duration: 360,
       ease: 'Cubic.Out',
       onComplete: () => dust.destroy(),
+    });
+  }
+
+  // ─────────── 스테이지 분위기 ───────────
+  setupStageAtmosphere(width, height) {
+    const id = this.stage.id;
+    if (id === 'gate') {
+      // 풀 잎 살랑 — 하단에 흩어진 풀 줄기
+      for (let i = 0; i < 20; i++) {
+        const x = 30 + Math.random() * (width - 60);
+        const y = height - 6 - Math.random() * 30;
+        const blade = this.add.graphics().setDepth(-26);
+        blade.fillStyle(0x6ab070, 0.7);
+        blade.fillTriangle(x - 1, y, x + 1, y, x + (Math.random() - 0.5) * 4, y - 6 - Math.random() * 4);
+      }
+      // 떠다니는 노란 꽃잎
+      this.spawnDriftParticles(width, height, {
+        count: 3, color: 0xfff5d8, size: 1.6, vy: 25, alpha: 0.5,
+      });
+    } else if (id === 'forest') {
+      // 낙엽
+      this.spawnDriftParticles(width, height, {
+        count: 4, color: 0x9a6e3a, size: 2.4, vy: 30, alpha: 0.55, sway: 30,
+      });
+      // 어두운 트리 그림자 — 위쪽 큰 검은 원으로
+      const tree = this.add.graphics().setDepth(-26);
+      tree.fillStyle(0x000000, 0.5);
+      tree.fillCircle(40, 80, 70);
+      tree.fillCircle(width - 40, 100, 60);
+      tree.fillCircle(60, 250, 50);
+      tree.fillCircle(width - 60, 220, 45);
+    } else if (id === 'pass') {
+      // 눈송이 (흰)
+      this.spawnDriftParticles(width, height, {
+        count: 6, color: 0xffffff, size: 2, vy: 50, alpha: 0.85, sway: 24,
+      });
+      // 옅은 흰 베이스
+      const fog = this.add.graphics().setDepth(-26);
+      fog.fillStyle(0xffffff, 0.04);
+      fog.fillRect(0, 0, width, height);
+    } else if (id === 'crypt') {
+      // 횃불 잉걸 (빨강/오렌지)
+      this.spawnDriftParticles(width, height, {
+        count: 5, color: 0xff8a3a, size: 1.8, vy: -20, alpha: 0.85, sway: 14, glow: true,
+      });
+      // 좌우 횃불 그림자
+      const torches = this.add.graphics().setDepth(-26);
+      [80, height - 200, 280, height - 100].forEach((y, i) => {
+        const x = i % 2 === 0 ? 30 : width - 30;
+        torches.fillStyle(COLORS.torchOrange, 0.4);
+        torches.fillCircle(x, y, 30);
+      });
+    } else if (id === 'throne') {
+      // 골드 먼지
+      this.spawnDriftParticles(width, height, {
+        count: 5, color: 0xffd860, size: 1.5, vy: -8, alpha: 0.6, sway: 18, glow: true,
+      });
+      // 적색 카펫 — 중앙 세로 띠
+      const carpet = this.add.graphics().setDepth(-27);
+      carpet.fillStyle(0x6e1818, 1);
+      carpet.fillRect(width / 2 - 60, 0, 120, height);
+      carpet.lineStyle(2, COLORS.gold, 0.7);
+      carpet.beginPath();
+      carpet.moveTo(width / 2 - 60, 0); carpet.lineTo(width / 2 - 60, height);
+      carpet.moveTo(width / 2 + 60, 0); carpet.lineTo(width / 2 + 60, height);
+      carpet.strokePath();
+    }
+  }
+
+  spawnDriftParticles(width, height, opts) {
+    // 시간 인터벌로 입자 토출
+    const { count, color, size, vy, alpha, sway = 8, glow = false } = opts;
+    this._driftEvent = this.time.addEvent({
+      delay: 280,
+      loop: true,
+      callback: () => {
+        for (let i = 0; i < count; i++) {
+          const x = 20 + Math.random() * (width - 40);
+          const startY = vy < 0 ? height + 10 : -10;
+          const p = this.add.circle(x, startY, size, color, alpha).setDepth(-25);
+          if (glow) p.setBlendMode(Phaser.BlendModes.ADD);
+          const driftMs = (Math.abs(height) / Math.abs(vy)) * 1000 * (0.8 + Math.random() * 0.4);
+          this.tweens.add({
+            targets: p,
+            y: vy < 0 ? -10 : height + 10,
+            x: x + (Math.random() - 0.5) * sway * 6,
+            duration: driftMs,
+            ease: 'Linear',
+            onComplete: () => p.destroy(),
+          });
+          // 옆 흔들림
+          this.tweens.add({
+            targets: p,
+            angle: { from: 0, to: 360 },
+            duration: 1200 + Math.random() * 800,
+            repeat: -1,
+          });
+        }
+      },
     });
   }
 

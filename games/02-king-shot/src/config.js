@@ -70,6 +70,7 @@ export const STAGES = [
     palette: { ground: COLORS.groundGrass, accent: COLORS.gold },
     spawnMul: 0.95,
     hpMul: 0.95,
+    boss: { name: 'OGRE LORD', color: COLORS.orcRed, weaponColor: COLORS.woodBrown },
   },
   {
     id: 'forest',
@@ -81,6 +82,7 @@ export const STAGES = [
     palette: { ground: 0x1f4d2e, accent: COLORS.gold },
     spawnMul: 1.00,
     hpMul: 1.00,
+    boss: { name: 'FOREST TROLL', color: 0x4a6a3a, weaponColor: 0x3a2a1a },
   },
   {
     id: 'pass',
@@ -92,6 +94,7 @@ export const STAGES = [
     palette: { ground: 0x7a8a96, accent: COLORS.gold },
     spawnMul: 1.05,
     hpMul: 1.10,
+    boss: { name: 'ICE GIANT', color: 0x6e9ac0, weaponColor: 0xb0d8ff },
   },
   {
     id: 'crypt',
@@ -103,6 +106,7 @@ export const STAGES = [
     palette: { ground: 0x4a2438, accent: COLORS.torchOrange },
     spawnMul: 1.10,
     hpMul: 1.15,
+    boss: { name: 'BONE LICH', color: 0x9a7ac0, weaponColor: 0xc88a3a },
   },
   {
     id: 'throne',
@@ -114,6 +118,7 @@ export const STAGES = [
     palette: { ground: 0x6e1818, accent: COLORS.gold },
     spawnMul: 1.15,
     hpMul: 1.25,
+    boss: { name: 'CRIMSON KING', color: 0xa01818, weaponColor: 0xf4c542 },
   },
 ];
 
