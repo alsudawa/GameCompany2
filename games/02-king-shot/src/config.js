@@ -120,3 +120,43 @@ export const STAGES = [
 export function getStage(id) {
   return STAGES.find(s => s.id === id) ?? STAGES[0];
 }
+
+// ── 적 종류 ──
+export const ENEMY_KIND = {
+  GOBLIN:   'goblin',
+  WOLF:     'wolf',
+  ORC:      'orc',
+  ARCHER:   'archer',
+  GOLDEN:   'golden',
+};
+
+export const ENEMY_TYPES = {
+  [ENEMY_KIND.GOBLIN]:  { hp: 1, speed: 80,  score: 10, color: COLORS.goblinGreen, radius: 16 },
+  [ENEMY_KIND.WOLF]:    { hp: 1, speed: 140, score: 14, color: COLORS.wolfGray,    radius: 17 },
+  [ENEMY_KIND.ORC]:     { hp: 4, speed: 55,  score: 40, color: COLORS.orcRed,      radius: 22, frontShield: 0.5 },
+  [ENEMY_KIND.ARCHER]:  { hp: 2, speed: 60,  score: 30, color: COLORS.bone,        radius: 17, fireRate: 1.6, stopY: 0.55 },
+  [ENEMY_KIND.GOLDEN]:  { hp: 2, speed: 90,  score: 80, color: COLORS.gold,        radius: 18, gems: 2 },
+};
+
+// ── 콤보 ──
+export const COMBO = {
+  windowMs: 1200,         // 다음 킬까지 콤보 유지 시간
+  bonusPerStep: 0.08,     // 콤보당 추가 배율
+  maxMul: 5.0,
+};
+
+// 콤보 등급 배너 (이상 도달 시 표시)
+export const COMBO_RANKS = [
+  { at: 5,  label: 'GLORY!',     color: COLORS.gold },
+  { at: 12, label: 'VALOR!',     color: COLORS.gemBlue },
+  { at: 20, label: 'TRIUMPH!',   color: COLORS.capeRed },
+  { at: 35, label: 'CONQUEROR!', color: 0xff6b8a },
+  { at: 60, label: 'LEGEND!',    color: COLORS.parchment },
+];
+
+// 등급컷 (Step 5 결과 화면용)
+export const GRADE_CUTS = {
+  S: 8000,
+  A: 4500,
+  B: 2000,
+};
