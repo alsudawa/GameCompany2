@@ -520,8 +520,11 @@ export class GameScene extends Phaser.Scene {
     Audio.stopBgm({ fadeOut: 0.6 });
 
     const profile = Storage.load();
-    const prevBest = profile.bestScores?.['king-shot'] || 0;
-    const isBest = Storage.setBestScore('king-shot', this.score);
+    const stageKey = `king-shot-${this.stage.id}`;
+    const prevBest = profile.bestScores?.[stageKey] || profile.bestScores?.['king-shot'] || 0;
+    const isBest = Storage.setBestScore(stageKey, this.score);
+    // 전체 베스트도 갱신
+    Storage.setBestScore('king-shot', this.score);
     if (this.gemsEarned > 0) Storage.addGems(this.gemsEarned);
     if (this.coinsEarned > 0) Storage.addCoins(this.coinsEarned || 0);
     Analytics.track('session_end', {
