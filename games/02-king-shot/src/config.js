@@ -15,56 +15,57 @@ export const KEY = {
   tilesheet: 'td_sheet',
 };
 
-// 타일시트는 23 cols × 13 rows = 299 frames (frame index 0..298).
-// 핵심 인덱스만 검증 후 추가. (게임 안 디버그 모드에서 그리드 확인 가능)
-// 1-based 파일명(towerDefense_tile001..299) → frame = N-1.
+// 타일 인덱스 매핑 (Kenney TD Top-Down sheet 검증 완료)
 export const TILE = {
-  // 지면
-  GRASS:        23,    // 순수 녹색 (tile024)
-  GRASS_ALT:    24,    // 살짝 무늬 있는 잔디
-  DIRT:         28,    // 순수 흙길
-  SAND:         33,    // 모래
-  STONE:        38,    // 돌바닥
-  // 길 — 흙 (가로/세로/코너 4종)
-  PATH_H:       46,    // 가로 길
-  PATH_V:       69,    // 세로 길
-  PATH_CORNER_TL: 47,  // ┌ 좌상 코너
-  PATH_CORNER_TR: 48,  // ┐ 우상 코너
-  PATH_CORNER_BL: 70,  // └ 좌하 코너
-  PATH_CORNER_BR: 71,  // ┘ 우하 코너
-  PATH_T_DOWN:  92,    // T 분기 (참고용)
-  PATH_END:     45,    // 끝점
-  // 타워 베이스 (배치 가능 슬롯)
-  TOWER_BASE:   249,   // 회색 사각 + 가운데 원
-  TOWER_BASE_DARK: 250,
-  // 타워 상단 (4종)
-  TOWER_ARCHER: 274,   // 단발 빠름
-  TOWER_CANNON: 275,   // 단발 강력
-  TOWER_MORTAR: 276,   // 범위 폭격
-  TOWER_FROST:  277,   // 둔화
+  GRASS:           24,    // 잔디 (도트 무늬)
+  GRASS_PLAIN:     52,    // 순수 녹색 (장식 적은 변형)
+  PATH:            72,    // 흙길 평면
+  SLOT:            38,    // 빈 타워 슬롯 (녹색 사각)
+  SLOT_BUILD:      39,    // 슬롯 + 망치 (구매 표시)
+  SLOT_SELECTED:   41,    // 슬롯 + 타겟 (선택 표시)
+
+  // 타워 (4종)
+  TOWER_ARCHER:    249,   // 녹색 캐논 (단일/빠름)
+  TOWER_CANNON:    250,   // 적색 캐논 (단일/강력)
+  TOWER_MORTAR:    205,   // 다탄두 발사기 (범위)
+  TOWER_FROST:     226,   // 회색 베이스 (둔화 — 시안 틴트)
+
   // 적 유닛
-  ENEMY_SOLDIER:    266,
-  ENEMY_HEAVY:      267,
-  ENEMY_SCOUT:      268,
-  ENEMY_TANK:       269,
-  ENEMY_BOSS:       270,
+  ENEMY_TANK_GREEN: 268,
+  ENEMY_TANK_TAN:   269,
+  ENEMY_PLANE_GREEN: 270,
+  ENEMY_PLANE_GRAY:  271,
+
   // 발사체
-  BULLET_ARROW:     281,
-  BULLET_CANNON:    282,
-  BULLET_MORTAR:    283,
-  BULLET_FROST:     284,
-  // 폭발/이펙트
-  EXPLOSION_SMALL:  287,
-  EXPLOSION_BIG:    288,
+  BULLET_GOLD:     272,
+  BULLET_GRAY:     273,
+  BULLET_ORANGE:   274,
+  BULLET_WHITE:    275,
+  BULLET_ROCKET:   251,
+  BULLET_ROCKET_RED: 252,
+
+  // 폭발/화염
+  FLAME_1:        295,
+  FLAME_2:        296,
+  FLAME_3:        297,
+  FLAME_4:        298,
+
   // 장식
-  TREE_SMALL:    195,
-  TREE_LARGE:    196,
-  ROCK_SMALL:    197,
-  ROCK_LARGE:    198,
-  CRYSTAL:       199,
-  GEM_BLUE:      200,
+  TREE:           130,
+  TREE_PINE:      134,
+  BUSH:           131,
+  ROCK_SMALL:     135,
+  ROCK_LARGE:     137,
+
+  // 아이템
+  COIN_GOLD:      266,
+  COIN_SILVER:    267,
+  GEM_BLUE:       180,
+  GEM_DIAMOND:    183,
+
+  // 숫자 (276=0 .. 285=9)
+  NUM_0: 276,
 };
-// NOTE: 인덱스는 게임 안 디버그 그리드(`?debug` 쿼리)에서 검증한 후 보정.
 
 // 색상 팔레트 (UI/오버레이)
 export const COLORS = {
