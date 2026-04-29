@@ -172,17 +172,6 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  drawPathOverlay() {
-    // 디버그: 폴리라인 옅게 그리기 (Step 3에서 OFF 토글 추가)
-    const g = this.add.graphics().setDepth(2);
-    g.lineStyle(3, 0xffffff, 0.06);
-    const pts = this.path.pts;
-    g.beginPath();
-    g.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-    g.strokePath();
-  }
-
   drawSpawnAndKing() {
     const ts = GAME.tileSize;
     // 시작점: 위쪽 화면 밖에서 진입 — 첫 화면 안 셀에 작은 화살표
