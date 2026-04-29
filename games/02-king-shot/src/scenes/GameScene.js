@@ -109,13 +109,60 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawPath() {
+    // 타일 대신 Graphics로 부드러운 길을 그림 — 두꺼운 갈색 라인 + 짙은 외곽 + 사이 점선.
     const ts = GAME.tileSize;
-    const scale = ts / GAME.spriteTile;
-    for (const [c, r] of this.pathTiles) {
-      // 화면 밖 (-1 / cols / rows 같은) 좌표는 그리지 않음
-      if (c < 0 || r < 0 || c >= this.stage.cols || r >= this.stage.rows) continue;
-      this.add.image(c * ts, r * ts, KEY.tilesheet, TILE.PATH)
-        .setOrigin(0).setScale(scale).setDepth(1);
+    const pts = this.stage.pathWaypoints.map(([c, r]) => ({
+      x: c * ts + ts / 2,
+      y: r * ts + ts / 2,
+    }));
+
+    const lane = ts - 6;          // 길 폭
+    const dark = 0x5a3a1c;
+    const mid  = 0x8b5a3c;
+    const top  = 0xb87a4a;
+
+    // 어두운 외곽
+    const outer = this.add.graphics().setDepth(1);
+    outer.lineStyle(lane + 6, dark, 1);
+    outer.lineCap = 'round';
+    outer.lineJoin = 'round';
+    outer.beginPath();
+    outer.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) outer.lineTo(pts[i].x, pts[i].y);
+    outer.strokePath();
+
+    // 본체 갈색
+    const body = this.add.graphics().setDepth(2);
+    body.lineStyle(lane, mid, 1);
+    body.lineCap = 'round';
+    body.lineJoin = 'round';
+    body.beginPath();
+    body.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) body.lineTo(pts[i].x, pts[i].y);
+    body.strokePath();
+
+    // 안쪽 밝은 라인 (중앙)
+    const inner = this.add.graphics().setDepth(3);
+    inner.lineStyle(lane * 0.45, top, 0.7);
+    inner.lineCap = 'round';
+    inner.lineJoin = 'round';
+    inner.beginPath();
+    inner.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) inner.lineTo(pts[i].x, pts[i].y);
+    inner.strokePath();
+
+    // 점선 마커 — 진행 방향 표시
+    const dots = this.add.graphics().setDepth(4);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      const nx = dx / len, ny = dy / len;
+      const step = 22;
+      for (let t = step; t < len - step / 2; t += step) {
+        dots.fillStyle(0xf4e8c8, 0.7);
+        dots.fillCircle(a.x + nx * t, a.y + ny * t, 1.6);
+      }
     }
   }
 
@@ -142,29 +189,51 @@ export class GameScene extends Phaser.Scene {
 
   drawTowerSlots() {
     const ts = GAME.tileSize;
-    const scale = ts / GAME.spriteTile;
-    this.slots = [];  // {col, row, x, y, image, tower}
+    this.slots = [];
     for (const [c, r] of (this.stage.towerSlots || [])) {
       const px = c * ts + ts / 2;
       const py = r * ts + ts / 2;
-      const img = this.add.image(px, py, KEY.tilesheet, TILE.SLOT)
-        .setScale(scale).setDepth(15).setAlpha(0.85);
-      const slot = { col: c, row: r, x: px, y: py, image: img, tower: null };
-      // 펄스 애니
+      const slot = { col: c, row: r, x: px, y: py, tower: null };
+
+      const cont = this.add.container(px, py).setDepth(15);
+      const ring = this.add.graphics();
+      // 황금 링 + 양피지 채움 + "+" 아이콘
+      const r1 = 18;
+      ring.fillStyle(0x000000, 0.45);
+      ring.fillCircle(2, 2, r1);
+      ring.fillStyle(0xf4e8c8, 0.75);
+      ring.fillCircle(0, 0, r1);
+      ring.lineStyle(2.5, 0xc89438, 0.95);
+      ring.strokeCircle(0, 0, r1);
+      ring.lineStyle(1, 0xf4c542, 0.85);
+      ring.strokeCircle(0, 0, r1 - 3);
+      // "+" 십자
+      ring.lineStyle(3, 0xc89438, 0.95);
+      ring.beginPath();
+      ring.moveTo(-7, 0); ring.lineTo(7, 0);
+      ring.moveTo(0, -7); ring.lineTo(0, 7);
+      ring.strokePath();
+      cont.add(ring);
+
+      // 미세 펄스 (시인성)
       this.tweens.add({
-        targets: img,
-        alpha: { from: 0.85, to: 0.55 },
-        duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+        targets: cont, scale: { from: 1, to: 1.12 },
+        duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
-      // 인터랙션 (적당히 큰 히트박스)
-      img.setInteractive(new Phaser.Geom.Rectangle(-12, -12, 88, 88), Phaser.Geom.Rectangle.Contains);
-      img.on('pointerdown', (pointer, lx, ly, evt) => {
+
+      // 큰 히트박스
+      cont.setSize(48, 48);
+      cont.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains);
+      cont.on('pointerover', () => this.tweens.add({ targets: cont, scale: 1.18, duration: 120 }));
+      cont.on('pointerout',  () => this.tweens.add({ targets: cont, scale: 1, duration: 120 }));
+      cont.on('pointerdown', (pointer, lx, ly, evt) => {
         evt.stopPropagation?.();
         this.onSlotClick(slot);
       });
+      slot.image = cont;
       this.slots.push(slot);
     }
-    // 빈 공간 탭 → 메뉴/선택 닫기 (게임 오브젝트 클릭은 무시)
+    // 빈 공간 탭 → 메뉴/선택 닫기
     this.input.on('pointerdown', (p, gameObjects) => {
       if (gameObjects && gameObjects.length > 0) return;
       this.closeBuildMenu();
@@ -174,33 +243,119 @@ export class GameScene extends Phaser.Scene {
 
   drawSpawnAndKing() {
     const ts = GAME.tileSize;
-    // 시작점: 위쪽 화면 밖에서 진입 — 첫 화면 안 셀에 작은 화살표
+
+    // 시작점 — "ENEMIES" 빨간 화살표
     const start = this.stage.pathWaypoints[1];
     const sx = start[0] * ts + ts / 2;
-    const sy = 6;
+    const sy = 12;
     const arrow = this.add.graphics().setDepth(25);
-    arrow.fillStyle(0xff5050, 0.85);
+    arrow.fillStyle(0x000000, 0.5);
+    arrow.fillTriangle(sx - 10, sy + 1, sx + 10, sy + 1, sx, sy + 14);
+    arrow.fillStyle(0xff5050, 0.95);
     arrow.fillTriangle(sx - 8, sy, sx + 8, sy, sx, sy + 12);
     this.tweens.add({
-      targets: arrow, alpha: { from: 1, to: 0.4 },
+      targets: arrow, alpha: { from: 1, to: 0.35 },
       duration: 700, yoyo: true, repeat: -1,
     });
 
-    // 끝점 (왕): 마지막 웨이포인트 직전에 작은 캐슬 (단순 도형)
+    // 끝점 — 큰 성문 + 그 위에 기사 왕(주인공)
     const last = this.stage.pathWaypoints[this.stage.pathWaypoints.length - 2];
     const cx = last[0] * ts + ts / 2;
     const cy = last[1] * ts + ts / 2;
-    const cg = this.add.graphics().setDepth(25);
-    // 성문 — 사각 + 골드 디테일
-    cg.fillStyle(0x000000, 0.45);
-    cg.fillRoundedRect(cx - 24, cy - 18, 48, 40, 6);
-    cg.fillStyle(0x5a5a55, 1);
-    cg.fillRoundedRect(cx - 22, cy - 18, 44, 38, 5);
-    cg.fillStyle(0x3e2e1e, 1);
-    cg.fillRoundedRect(cx - 10, cy - 6, 20, 18, 3);
-    cg.fillStyle(0xf4c542, 1);
-    cg.fillTriangle(cx - 22, cy - 18, cx - 14, cy - 26, cx - 6, cy - 18);
-    cg.fillTriangle(cx + 6, cy - 18, cx + 14, cy - 26, cx + 22, cy - 18);
+    this.drawCastleGate(cx, cy);
+    this.drawKing(cx, cy - 30);
+  }
+
+  drawCastleGate(cx, cy) {
+    // 성문 — 크고 또렷하게
+    const g = this.add.graphics().setDepth(25);
+    // 그림자
+    g.fillStyle(0x000000, 0.5);
+    g.fillRect(cx - 38, cy - 4, 76, 32);
+    // 본체 돌
+    g.fillStyle(0x6e6e76, 1);
+    g.fillRect(cx - 36, cy - 6, 72, 30);
+    // 위쪽 짙은 띠
+    g.fillStyle(0x4a4d52, 1);
+    g.fillRect(cx - 36, cy - 6, 72, 6);
+    // 돌 시임
+    g.lineStyle(1.5, 0x3a3d42, 0.85);
+    [-24, -12, 0, 12, 24].forEach(x => {
+      g.beginPath();
+      g.moveTo(cx + x, cy - 6); g.lineTo(cx + x, cy + 24);
+      g.strokePath();
+    });
+    g.beginPath();
+    g.moveTo(cx - 36, cy + 8); g.lineTo(cx + 36, cy + 8);
+    g.strokePath();
+    // 정문(아치)
+    g.fillStyle(0x2a1a0a, 1);
+    g.fillRoundedRect(cx - 16, cy + 4, 32, 22, { tl: 12, tr: 12, bl: 0, br: 0 });
+    // 위쪽 톱니(미늘)
+    g.fillStyle(0x6e6e76, 1);
+    [-30, -18, -6, 6, 18, 30].forEach(x => {
+      g.fillRect(cx + x - 4, cy - 14, 8, 8);
+    });
+    // 깃발 두 개 (적색)
+    [-30, 30].forEach(x => {
+      g.fillStyle(0x3e2e1e, 1);
+      g.fillRect(cx + x - 1, cy - 22, 2, 16);
+      g.fillStyle(0xc8302d, 1);
+      g.fillTriangle(cx + x + 1, cy - 22, cx + x + 12, cy - 18, cx + x + 1, cy - 14);
+      // 골드 트림
+      g.fillStyle(0xf4c542, 1);
+      g.fillCircle(cx + x, cy - 22, 1.6);
+    });
+  }
+
+  drawKing(cx, cy) {
+    // 왕 — 절차 그래픽으로 작지만 또렷한 기사 (중앙 성문 위)
+    const c = this.add.container(cx, cy).setDepth(40);
+    // 그림자
+    const shadow = this.add.ellipse(0, 12, 22, 6, 0x000000, 0.5);
+    // 망토 (적색)
+    const cape = this.add.graphics();
+    cape.fillStyle(0x8c1e1c, 1);
+    cape.fillTriangle(-9, -2, 9, -2, 0, 14);
+    cape.fillStyle(0xc8302d, 1);
+    cape.fillTriangle(-7, -2, 7, -2, 0, 12);
+    // 갑옷 몸
+    const body = this.add.graphics();
+    body.fillStyle(0x223a5e, 1);
+    body.fillRoundedRect(-7, -3, 14, 14, 3);
+    body.fillStyle(0x3a5a8c, 1);
+    body.fillRoundedRect(-6, -3, 12, 12, 3);
+    body.fillStyle(0xf4c542, 1);
+    body.fillCircle(0, 4, 1.8);
+    // 머리
+    const head = this.add.graphics();
+    head.fillStyle(0x3e2e1e, 1);
+    head.fillCircle(0, -7, 5);
+    head.fillStyle(0xe8c8a0, 1);
+    head.fillCircle(0, -7, 4.5);
+    head.fillStyle(0x1a1208, 1);
+    head.fillCircle(-1.5, -7, 0.6);
+    head.fillCircle( 1.5, -7, 0.6);
+    // 왕관
+    const crown = this.add.graphics();
+    crown.fillStyle(0xc89438, 1);
+    crown.fillRect(-6, -13, 12, 3);
+    crown.fillStyle(0xf4c542, 1);
+    crown.fillRect(-6, -14, 12, 3);
+    [-5, -2.5, 0, 2.5, 5].forEach((x, i) => {
+      const h = [3, 4, 5, 4, 3][i];
+      crown.fillStyle(0xf4c542, 1);
+      crown.fillTriangle(x - 1.2, -14, x + 1.2, -14, x, -14 - h);
+    });
+    crown.fillStyle(0xc8302d, 1);
+    crown.fillCircle(0, -12.5, 0.9);
+    c.add([shadow, cape, body, head, crown]);
+
+    // 미세 숨쉬기 펄스
+    this.tweens.add({
+      targets: c, scale: { from: 1, to: 1.06 },
+      duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
   }
 
   // ────────────── 업데이트 루프 ──────────────
