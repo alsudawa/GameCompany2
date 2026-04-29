@@ -7,9 +7,13 @@ import { Juice } from '../../../../shared/juice.js';
 import { STAGE_GATE } from '../maps/stage_gate.js';
 import { buildPath, tilesAlongPath } from '../maps/path.js';
 import { Enemy } from '../entities/Enemy.js';
+import { Tower } from '../entities/Tower.js';
+import { Projectile } from '../entities/Projectile.js';
+import { TOWERS } from '../config.js';
 
 const STAGES = { gate: STAGE_GATE };
 const ENEMY_POOL = 60;
+const PROJECTILE_POOL = 120;
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -51,6 +55,17 @@ export class GameScene extends Phaser.Scene {
       e.setDepth(50);
       this.enemies.push(e);
     }
+
+    // 7.5) 발사체 풀 + 타워 리스트
+    this.projectiles = [];
+    for (let i = 0; i < PROJECTILE_POOL; i++) {
+      const p = new Projectile(this);
+      p.setDepth(55);
+      this.projectiles.push(p);
+    }
+    this.towers = [];                  // 배치된 타워
+    this.selectedTower = null;         // 사거리 표시 중인 타워
+    this.buildMenu = null;             // 슬롯 빌드 메뉴 컨테이너
 
     // 8) 상태
     this.gold = GAME.startGold;
@@ -125,20 +140,33 @@ export class GameScene extends Phaser.Scene {
   drawTowerSlots() {
     const ts = GAME.tileSize;
     const scale = ts / GAME.spriteTile;
-    this.slotImages = [];
+    this.slots = [];  // {col, row, x, y, image, tower}
     for (const [c, r] of (this.stage.towerSlots || [])) {
       const px = c * ts + ts / 2;
       const py = r * ts + ts / 2;
       const img = this.add.image(px, py, KEY.tilesheet, TILE.SLOT)
-        .setScale(scale).setDepth(15).setAlpha(0.9);
-      // 미묘한 호버 펄스 (Step 4에서 인터랙션 추가)
+        .setScale(scale).setDepth(15).setAlpha(0.85);
+      const slot = { col: c, row: r, x: px, y: py, image: img, tower: null };
+      // 펄스 애니
       this.tweens.add({
         targets: img,
-        alpha: { from: 0.9, to: 0.6 },
+        alpha: { from: 0.85, to: 0.55 },
         duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
-      this.slotImages.push(img);
+      // 인터랙션 (적당히 큰 히트박스)
+      img.setInteractive(new Phaser.Geom.Rectangle(-12, -12, 88, 88), Phaser.Geom.Rectangle.Contains);
+      img.on('pointerdown', (pointer, lx, ly, evt) => {
+        evt.stopPropagation?.();
+        this.onSlotClick(slot);
+      });
+      this.slots.push(slot);
     }
+    // 빈 공간 탭 → 메뉴/선택 닫기 (게임 오브젝트 클릭은 무시)
+    this.input.on('pointerdown', (p, gameObjects) => {
+      if (gameObjects && gameObjects.length > 0) return;
+      this.closeBuildMenu();
+      this.deselectTower();
+    });
   }
 
   drawPathOverlay() {
@@ -202,6 +230,16 @@ export class GameScene extends Phaser.Scene {
       if (!e.alive) continue;
       const r = e.update(dt, this);
       if (r?.reachedEnd) this.onEnemyReachedEnd(e);
+    }
+
+    // 타워 업데이트
+    for (const t of this.towers) t.update(dt, this);
+
+    // 발사체 업데이트 + 충돌
+    for (const p of this.projectiles) {
+      if (!p.alive) continue;
+      p.update(dt, this);
+      if (p.alive) this.checkProjectileVsEnemies(p);
     }
 
     // 웨이브 클리어 판정
@@ -274,6 +312,272 @@ export class GameScene extends Phaser.Scene {
     if (!e) return;
     e.reset(kind, this.path);
     this.waveSpawned++;
+  }
+
+  // ────────────── 타워 / 슬롯 ──────────────
+  onSlotClick(slot) {
+    this.closeBuildMenu();
+    this.deselectTower();
+    if (slot.tower) {
+      this.selectTower(slot.tower);
+    } else {
+      this.openBuildMenu(slot);
+    }
+  }
+
+  openBuildMenu(slot) {
+    // 슬롯 주변에 4개의 작은 타워 아이콘을 부채꼴로 배치
+    const c = this.add.container(slot.x, slot.y).setDepth(200);
+    const radius = 52;
+    const kinds = ['archer', 'cannon', 'mortar', 'frost'];
+    const angles = [-Math.PI * 0.75, -Math.PI * 0.25, Math.PI * 0.25, Math.PI * 0.75];
+    kinds.forEach((kind, i) => {
+      const cfg = TOWERS[kind];
+      const ang = angles[i];
+      const ix = Math.cos(ang) * radius;
+      const iy = Math.sin(ang) * radius;
+      const item = this.add.container(ix, iy);
+
+      // 백 디스크
+      const bg = this.add.graphics();
+      bg.fillStyle(0x000000, 0.55);
+      bg.fillCircle(2, 2, 20);
+      bg.fillStyle(COLORS.parchment, 0.95);
+      bg.fillCircle(0, 0, 19);
+      bg.lineStyle(2, COLORS.woodDark, 1);
+      bg.strokeCircle(0, 0, 19);
+      bg.lineStyle(1, cfg.color, 0.9);
+      bg.strokeCircle(0, 0, 17);
+      // 타워 아이콘
+      const icon = this.add.image(0, 0, KEY.tilesheet, this.frameForTower(kind))
+        .setScale(0.35);
+      if (kind === 'frost') icon.setTint(0x80c8ff);
+      // 코스트 라벨
+      const aff = this.gold >= cfg.cost[0];
+      const lbl = this.add.text(0, 22, `${cfg.cost[0]}g`, {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: aff ? '#f4c542' : '#ff5050', stroke: '#3e2e1e', strokeThickness: 2,
+      }).setOrigin(0.5);
+
+      item.add([bg, icon, lbl]);
+      item.setSize(40, 40);
+      item.setInteractive(new Phaser.Geom.Circle(0, 0, 22), Phaser.Geom.Circle.Contains);
+      item.on('pointerover', () => this.tweens.add({ targets: item, scale: 1.18, duration: 120 }));
+      item.on('pointerout',  () => this.tweens.add({ targets: item, scale: 1, duration: 120 }));
+      item.on('pointerdown', (p, lx, ly, evt) => {
+        evt.stopPropagation?.();
+        if (this.gold < cfg.cost[0]) {
+          // 부족
+          Audio.miss();
+          this.tweens.add({ targets: lbl, scale: 1.4, duration: 100, yoyo: true });
+          return;
+        }
+        this.gold -= cfg.cost[0];
+        this.placeTower(slot, kind);
+        this.closeBuildMenu();
+        this.updateHud();
+      });
+
+      // 부드러운 등장
+      item.setAlpha(0).setScale(0.4);
+      this.tweens.add({
+        targets: item, alpha: 1, scale: 1,
+        duration: 220, delay: i * 40, ease: 'Back.Out',
+      });
+      c.add(item);
+    });
+
+    // 중앙 X (취소)
+    const xBtn = this.add.container(0, 0);
+    const xbg = this.add.graphics();
+    xbg.fillStyle(COLORS.woodDark, 1);
+    xbg.fillCircle(0, 0, 12);
+    xbg.lineStyle(1, COLORS.goldHud, 0.8);
+    xbg.strokeCircle(0, 0, 12);
+    const xt = this.add.text(0, 0, '×', {
+      fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
+      color: '#f4c542',
+    }).setOrigin(0.5);
+    xBtn.add([xbg, xt]);
+    xBtn.setSize(28, 28);
+    xBtn.setInteractive(new Phaser.Geom.Circle(0, 0, 14), Phaser.Geom.Circle.Contains);
+    xBtn.on('pointerdown', (p, lx, ly, evt) => {
+      evt.stopPropagation?.();
+      this.closeBuildMenu();
+    });
+    c.add(xBtn);
+
+    this.buildMenu = c;
+  }
+
+  closeBuildMenu() {
+    if (this.buildMenu) {
+      const m = this.buildMenu;
+      this.buildMenu = null;
+      this.tweens.add({
+        targets: m, alpha: 0, scale: 0.6,
+        duration: 160, ease: 'Cubic.In',
+        onComplete: () => m.destroy(),
+      });
+    }
+  }
+
+  selectTower(tower) {
+    this.selectedTower = tower;
+    tower.showRange();
+    // 업그레이드/판매 미니 메뉴
+    const c = this.add.container(tower.x, tower.y - 50).setDepth(200);
+    const w = 110, h = 28;
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.55);
+    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
+    bg.fillStyle(COLORS.parchment, 0.95);
+    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.lineStyle(2, COLORS.woodDark, 1);
+    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.lineStyle(1, COLORS.goldHud, 0.85);
+    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
+    c.add(bg);
+    if (tower.canUpgrade()) {
+      const cost = tower.nextCost;
+      const aff = this.gold >= cost;
+      const t = this.add.text(0, 0, `▲ UPGRADE ${cost}g`, {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: aff ? '#3e2e1e' : '#a04040',
+      }).setOrigin(0.5);
+      t.setLetterSpacing?.(1);
+      c.add(t);
+      c.setSize(w, h);
+      c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+      c.on('pointerdown', (p, lx, ly, evt) => {
+        evt.stopPropagation?.();
+        if (this.gold < cost) { Audio.miss(); return; }
+        this.gold -= cost;
+        tower.upgrade();
+        this.deselectTower();
+        this.updateHud();
+        Audio.purchase();
+      });
+    } else {
+      const t = this.add.text(0, 0, 'MAX TIER ★★★', {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: '#3e2e1e',
+      }).setOrigin(0.5);
+      c.add(t);
+    }
+    this.towerMenu = c;
+  }
+
+  deselectTower() {
+    if (this.selectedTower) {
+      this.selectedTower.hideRange();
+      this.selectedTower = null;
+    }
+    if (this.towerMenu) {
+      const m = this.towerMenu;
+      this.towerMenu = null;
+      this.tweens.add({
+        targets: m, alpha: 0, duration: 140,
+        onComplete: () => m.destroy(),
+      });
+    }
+  }
+
+  placeTower(slot, kind) {
+    const tower = new Tower(this, slot.x, slot.y, kind);
+    tower.setDepth(40);
+    slot.tower = tower;
+    slot.image.setVisible(false);
+    this.towers.push(tower);
+    Audio.purchase();
+    Juice.flash(this, TOWERS[kind].color, 160);
+    Juice.ring(this, slot.x, slot.y, { color: TOWERS[kind].color, radius: 52, duration: 380 });
+    // 타워 자체 클릭 가능 (선택)
+    tower.setSize(40, 40);
+    tower.setInteractive(new Phaser.Geom.Rectangle(-20, -20, 40, 40),
+                        Phaser.Geom.Rectangle.Contains);
+    tower.on('pointerdown', (p, lx, ly, evt) => {
+      evt.stopPropagation?.();
+      this.closeBuildMenu();
+      if (this.selectedTower === tower) this.deselectTower();
+      else { this.deselectTower(); this.selectTower(tower); }
+    });
+  }
+
+  fireProjectile(tower, target) {
+    const p = this.projectiles.find(pr => !pr.alive);
+    if (!p) return;
+    p.reset(tower.x, tower.y - 6, target, tower.kind, {
+      damage: tower.damage,
+      splash: tower.cfg.splash,
+      slow: tower.cfg.slow,
+      speed: tower.cfg.bulletSpeed,
+    });
+    // 사격 펀치 — body가 살짝 발사 방향으로 밀림
+    this.tweens.add({
+      targets: tower.body, scaleX: { from: 0.5, to: 0.55 },
+      duration: 80, yoyo: true,
+    });
+    Audio.tap();
+  }
+
+  checkProjectileVsEnemies(p) {
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const r = 18;
+      if (dx * dx + dy * dy < r * r) {
+        // 명중
+        const splash = p.splash;
+        if (splash > 0) {
+          // 범위 데미지
+          for (const e2 of this.enemies) {
+            if (!e2.alive) continue;
+            const ddx = e2.x - p.x;
+            const ddy = e2.y - p.y;
+            if (ddx * ddx + ddy * ddy < (splash + 18) * (splash + 18)) {
+              const killed = e2.takeDamage(p.dmg);
+              if (killed) this.onEnemyKilled(e2, true);
+            }
+          }
+          this.spawnExplosion(p.x, p.y, splash);
+        } else {
+          const killed = e.takeDamage(p.dmg);
+          if (p.slow > 0) e.applySlow(p.slow, 1500);
+          if (killed) this.onEnemyKilled(e, true);
+        }
+        Juice.spark(this, p.x, p.y, 0xfff4a0, 12);
+        p.deactivate();
+        return;
+      }
+    }
+  }
+
+  spawnExplosion(x, y, radius) {
+    Juice.ring(this, x, y, { color: 0xff8a3a, radius: radius + 10, duration: 360 });
+    Juice.shake(this, 0.008, 100);
+    // 화염 스프라이트 (4프레임 사이클)
+    const flame = this.add.image(x, y, KEY.tilesheet, TILE.FLAME_2)
+      .setScale(0.5).setDepth(56);
+    this.tweens.add({
+      targets: flame,
+      scale: { from: 0.4, to: 1 },
+      alpha: { from: 1, to: 0 },
+      duration: 400,
+      ease: 'Cubic.Out',
+      onComplete: () => flame.destroy(),
+    });
+  }
+
+  frameForTower(kind) {
+    const map = {
+      archer: TILE.TOWER_ARCHER,
+      cannon: TILE.TOWER_CANNON,
+      mortar: TILE.TOWER_MORTAR,
+      frost:  TILE.TOWER_FROST,
+    };
+    return map[kind];
   }
 
   onEnemyReachedEnd(e) {
