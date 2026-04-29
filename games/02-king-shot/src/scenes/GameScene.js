@@ -1,17 +1,16 @@
 // GameScene — TD Step 3: 타일맵 + 경로 + 적 풀 + 웨이브 + 라이프/골드.
 // (Step 4에서 타워 배치 + 자동 사격)
 
-import { COLORS, FONT, GAME, KEY, TILE } from '../config.js';
+import { COLORS, FONT, GAME, KEY, TILE, TOWERS } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
-import { STAGE_GATE } from '../maps/stage_gate.js';
+import { Storage } from '../../../../shared/storage.js';
+import { Analytics } from '../../../../shared/analytics.js';
+import { getStage } from '../maps/index.js';
 import { buildPath, tilesAlongPath } from '../maps/path.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Tower } from '../entities/Tower.js';
 import { Projectile } from '../entities/Projectile.js';
-import { TOWERS } from '../config.js';
-
-const STAGES = { gate: STAGE_GATE };
 const ENEMY_POOL = 60;
 const PROJECTILE_POOL = 120;
 
@@ -19,7 +18,9 @@ export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
 
   init(data) {
-    this.stage = STAGES[data?.stageId] ?? STAGE_GATE;
+    this.stage = getStage(data?.stageId);
+    this.hpMul = this.stage.hpMul ?? 1;
+    this.speedMul = this.stage.speedMul ?? 1;
   }
 
   create() {
@@ -96,11 +97,13 @@ export class GameScene extends Phaser.Scene {
     const scale = ts / GAME.spriteTile;
     const cols = this.stage.cols;
     const rows = this.stage.rows;
+    const tint = this.stage.groundTint ?? 0xffffff;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const tile = (Math.random() < 0.85) ? TILE.GRASS : TILE.GRASS_PLAIN;
-        this.add.image(c * ts, r * ts, KEY.tilesheet, tile)
+        const img = this.add.image(c * ts, r * ts, KEY.tilesheet, tile)
           .setOrigin(0).setScale(scale).setDepth(0);
+        if (tint !== 0xffffff) img.setTint(tint);
       }
     }
   }
@@ -310,7 +313,7 @@ export class GameScene extends Phaser.Scene {
   spawnEnemy(kind) {
     const e = this.enemies.find(en => !en.alive);
     if (!e) return;
-    e.reset(kind, this.path);
+    e.reset(kind, this.path, this.hpMul, this.speedMul);
     this.waveSpawned++;
   }
 
@@ -613,16 +616,7 @@ export class GameScene extends Phaser.Scene {
       targets: big, scale: { from: 1.8, to: 1 }, alpha: { from: 0, to: 1 },
       duration: 460, ease: 'Back.Out',
     });
-    this.time.delayedCall(2400, () => {
-      Audio.stopBgm({ fadeOut: 0.6 });
-      this.cameras.main.fadeOut(420, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('ResultScene', {
-          victory: true, score: this.score, kills: this.kills,
-          stageId: this.stage.id,
-        });
-      });
-    });
+    this.time.delayedCall(2400, () => this.endSession({ victory: true }));
   }
 
   gameOver() {
@@ -638,14 +632,33 @@ export class GameScene extends Phaser.Scene {
       targets: big, scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },
       duration: 460, ease: 'Back.Out',
     });
-    this.time.delayedCall(2400, () => {
-      Audio.stopBgm({ fadeOut: 0.6 });
-      this.cameras.main.fadeOut(420, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('ResultScene', {
-          victory: false, score: this.score, kills: this.kills,
-          stageId: this.stage.id,
-        });
+    this.time.delayedCall(2400, () => this.endSession({ victory: false }));
+  }
+
+  endSession({ victory }) {
+    Audio.stopBgm({ fadeOut: 0.6 });
+    const profile = Storage.load();
+    const stageKey = `king-shot-${this.stage.id}`;
+    const prevBest = profile.bestScores?.[stageKey] || 0;
+    const isBest = Storage.setBestScore(stageKey, this.score);
+    Storage.setBestScore('king-shot', this.score);
+    // 보너스 코인/젬
+    const coinReward = victory ? 25 : 5;
+    const gemReward  = victory ? 3 : 0;
+    if (coinReward) Storage.addCoins(coinReward);
+    if (gemReward)  Storage.addGems(gemReward);
+
+    Analytics.track('session_end', {
+      game: 'king-shot-td', stage: this.stage.id,
+      score: this.score, kills: this.kills, victory, isBest,
+    });
+    this.cameras.main.fadeOut(420, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.start('ResultScene', {
+        victory, score: this.score, kills: this.kills,
+        bestScore: Math.max(prevBest, this.score),
+        isBest, stageId: this.stage.id,
+        coinsEarned: coinReward, gemsEarned: gemReward,
       });
     });
   }
