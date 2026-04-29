@@ -1,302 +1,172 @@
-// King Shot 밸런스/비주얼 상수.
-// 중세 판타지 톤 — 사이버펑크 어휘 사용 안 함.
+// King Shot Tower Defense — config (밸런스/비주얼 상수).
+// 디펜스 맵 + 타워 배치 + Kenney TD Top-Down 스프라이트 사용.
 
 export const GAME = {
   width: 480,
   height: 800,
+  tileSize: 32,            // 화면 타일은 32px (Kenney 64px 스프라이트를 0.5 스케일)
+  spriteTile: 64,          // 원본 스프라이트 타일 사이즈
+  startGold: 200,
+  startLives: 12,
   countdown: 3,
-  kingY: 660,                // 왕의 기본 Y 위치
-  dragYRange: [420, 760],    // 드래그 이동 가능한 Y 범위 (하단 1/3)
 };
 
-// 판타지 팔레트
+export const KEY = {
+  tilesheet: 'td_sheet',
+};
+
+// 타일시트는 23 cols × 13 rows = 299 frames (frame index 0..298).
+// 핵심 인덱스만 검증 후 추가. (게임 안 디버그 모드에서 그리드 확인 가능)
+// 1-based 파일명(towerDefense_tile001..299) → frame = N-1.
+export const TILE = {
+  // 지면
+  GRASS:        23,    // 순수 녹색 (tile024)
+  GRASS_ALT:    24,    // 살짝 무늬 있는 잔디
+  DIRT:         28,    // 순수 흙길
+  SAND:         33,    // 모래
+  STONE:        38,    // 돌바닥
+  // 길 — 흙 (가로/세로/코너 4종)
+  PATH_H:       46,    // 가로 길
+  PATH_V:       69,    // 세로 길
+  PATH_CORNER_TL: 47,  // ┌ 좌상 코너
+  PATH_CORNER_TR: 48,  // ┐ 우상 코너
+  PATH_CORNER_BL: 70,  // └ 좌하 코너
+  PATH_CORNER_BR: 71,  // ┘ 우하 코너
+  PATH_T_DOWN:  92,    // T 분기 (참고용)
+  PATH_END:     45,    // 끝점
+  // 타워 베이스 (배치 가능 슬롯)
+  TOWER_BASE:   249,   // 회색 사각 + 가운데 원
+  TOWER_BASE_DARK: 250,
+  // 타워 상단 (4종)
+  TOWER_ARCHER: 274,   // 단발 빠름
+  TOWER_CANNON: 275,   // 단발 강력
+  TOWER_MORTAR: 276,   // 범위 폭격
+  TOWER_FROST:  277,   // 둔화
+  // 적 유닛
+  ENEMY_SOLDIER:    266,
+  ENEMY_HEAVY:      267,
+  ENEMY_SCOUT:      268,
+  ENEMY_TANK:       269,
+  ENEMY_BOSS:       270,
+  // 발사체
+  BULLET_ARROW:     281,
+  BULLET_CANNON:    282,
+  BULLET_MORTAR:    283,
+  BULLET_FROST:     284,
+  // 폭발/이펙트
+  EXPLOSION_SMALL:  287,
+  EXPLOSION_BIG:    288,
+  // 장식
+  TREE_SMALL:    195,
+  TREE_LARGE:    196,
+  ROCK_SMALL:    197,
+  ROCK_LARGE:    198,
+  CRYSTAL:       199,
+  GEM_BLUE:      200,
+};
+// NOTE: 인덱스는 게임 안 디버그 그리드(`?debug` 쿼리)에서 검증한 후 보정.
+
+// 색상 팔레트 (UI/오버레이)
 export const COLORS = {
-  // 배경
-  groundGrass:  0x3a7d44,
-  groundStone:  0x6b6e76,
-  groundDark:   0x1f3a22,
-  // 우드/UI
-  woodBrown:    0x8b5a3c,
-  woodDark:     0x3e2e1e,
-  parchment:    0xf4e8c8,
-  parchmentDim: 0xd9c897,
-  // 골드 계열 (시그니처)
-  gold:         0xf4c542,
+  bg:           0x9bce6a,
+  bgDark:       0x2a3a18,
+  goldHud:      0xf4c542,
   goldDeep:     0xc89438,
-  // 캐릭터
-  knightBlue:   0x3a5a8c,
-  knightBlueDk: 0x223a5e,
-  capeRed:      0xc8302d,
-  capeRedDk:    0x8c1e1c,
-  skin:         0xe8c8a0,
-  hair:         0x5a3a22,
-  // 적
-  bone:         0xe8dcc4,
-  goblinGreen:  0x5a7a3a,
-  orcRed:       0x8b3a2e,
-  wolfGray:     0x6b6e76,
-  // 아이템
-  gemBlue:      0x4a8bc2,
-  heartRed:     0xe84a4a,
-  // 이펙트
-  sparkYellow:  0xfff4a0,
-  smokeGray:    0xa89888,
-  torchOrange:  0xd97b3a,
-  // 텍스트
-  text:         0xf0e6d0,
-  textDim:      0x8a8470,
-  textDark:     0x3e2e1e,
+  parchment:    0xf4e8c8,
+  woodDark:     0x3e2e1e,
+  woodBrown:    0x6e4a2a,
+  red:          0xc8302d,
+  redDk:        0x8c1e1c,
+  blue:         0x4a8bc2,
   white:        0xffffff,
-  black:        0x000000,
+  text:         0xf0e6d0,
+  textDark:     0x3e2e1e,
+  textDim:      0x8a8470,
+  rangeOK:      0x6affd0,
+  rangeNo:      0xff5050,
+  slotIdle:     0xf4e8c8,
+  slotHover:    0xfff4a0,
 };
 
-// 폰트 패밀리 문자열 (style 객체에 그대로 사용)
 export const FONT = {
   display: '"Cinzel", "Rajdhani", Georgia, serif',
   body:    '"Rajdhani", Arial, sans-serif',
   mono:    '"JetBrains Mono", "Courier New", monospace',
 };
 
-// 5스테이지 — 각 스테이지는 1세션. 팔레트·BGM·난이도 배수가 다르다.
-// (Step 6에서 확장 — 지금은 골격만)
-export const STAGES = [
-  {
-    id: 'gate',
-    label: '01',
-    name: 'CASTLE GATE',
-    tagline: '왕국의 첫 관문',
-    bgm: 'stage_dawn',         // 폴백: Tap Rush BGM 재사용
-    bgBase: 0x1f3a22,
-    palette: { ground: COLORS.groundGrass, accent: COLORS.gold },
-    spawnMul: 0.95,
-    hpMul: 0.95,
-    boss: { name: 'OGRE LORD', color: COLORS.orcRed, weaponColor: COLORS.woodBrown },
+// 타워 정의
+// damage/range는 해당 tier의 값. fireRate 초당 1/N발.
+export const TOWERS = {
+  archer: {
+    id: 'archer',
+    name: 'ARCHER',
+    icon: '➶',
+    desc: '빠르게 단일 적 사격',
+    color: 0x8ad04f,
+    cost: [60, 90, 140],          // tier 1 → 2 → 3 가격
+    range:    [120, 145, 175],
+    damage:   [10, 18, 32],
+    fireRate: [0.45, 0.38, 0.30],
+    bulletSpeed: 520,
+    splash: 0,
+    slow: 0,
   },
-  {
-    id: 'forest',
-    label: '02',
-    name: 'WHISPERING FOREST',
-    tagline: '속삭이는 숲의 매복',
-    bgm: 'stage_pulse',
-    bgBase: 0x12281a,
-    palette: { ground: 0x1f4d2e, accent: COLORS.gold },
-    spawnMul: 1.00,
-    hpMul: 1.00,
-    boss: { name: 'FOREST TROLL', color: 0x4a6a3a, weaponColor: 0x3a2a1a },
+  cannon: {
+    id: 'cannon',
+    name: 'CANNON',
+    icon: '⚛',
+    desc: '느리지만 강력한 단발',
+    color: 0xc89438,
+    cost: [110, 160, 240],
+    range:    [110, 130, 155],
+    damage:   [28, 50, 95],
+    fireRate: [1.10, 0.95, 0.80],
+    bulletSpeed: 360,
+    splash: 18,
+    slow: 0,
   },
-  {
-    id: 'pass',
-    label: '03',
-    name: 'MOUNTAIN PASS',
-    tagline: '눈 덮인 산길',
-    bgm: 'stage_drive',
-    bgBase: 0x202830,
-    palette: { ground: 0x7a8a96, accent: COLORS.gold },
-    spawnMul: 1.05,
-    hpMul: 1.10,
-    boss: { name: 'ICE GIANT', color: 0x6e9ac0, weaponColor: 0xb0d8ff },
+  mortar: {
+    id: 'mortar',
+    name: 'MORTAR',
+    icon: '✸',
+    desc: '범위 폭격 (저속)',
+    color: 0xa84a4a,
+    cost: [140, 200, 290],
+    range:    [180, 200, 230],
+    damage:   [22, 38, 70],
+    fireRate: [1.60, 1.40, 1.20],
+    bulletSpeed: 240,
+    splash: 60,
+    slow: 0,
   },
-  {
-    id: 'crypt',
-    label: '04',
-    name: 'DRAGON CRYPT',
-    tagline: '용의 무덤',
-    bgm: 'stage_storm',
-    bgBase: 0x1c0a14,
-    palette: { ground: 0x4a2438, accent: COLORS.torchOrange },
-    spawnMul: 1.10,
-    hpMul: 1.15,
-    boss: { name: 'BONE LICH', color: 0x9a7ac0, weaponColor: 0xc88a3a },
+  frost: {
+    id: 'frost',
+    name: 'FROST',
+    icon: '❆',
+    desc: '적을 둔화시킴',
+    color: 0x6abedf,
+    cost: [80, 130, 200],
+    range:    [110, 130, 155],
+    damage:   [6, 12, 22],
+    fireRate: [0.55, 0.48, 0.40],
+    bulletSpeed: 460,
+    splash: 0,
+    slow: 0.40,                   // 0.40 = 40% 둔화
   },
-  {
-    id: 'throne',
-    label: '05',
-    name: 'ROYAL THRONE',
-    tagline: '왕좌의 결전',
-    bgm: 'stage_star',
-    bgBase: 0x1a0808,
-    palette: { ground: 0x6e1818, accent: COLORS.gold },
-    spawnMul: 1.15,
-    hpMul: 1.25,
-    boss: { name: 'CRIMSON KING', color: 0xa01818, weaponColor: 0xf4c542 },
-  },
-];
-
-export function getStage(id) {
-  return STAGES.find(s => s.id === id) ?? STAGES[0];
-}
-
-// ── 적 종류 ──
-export const ENEMY_KIND = {
-  GOBLIN:   'goblin',
-  WOLF:     'wolf',
-  ORC:      'orc',
-  ARCHER:   'archer',
-  GOLDEN:   'golden',
 };
 
-export const ENEMY_TYPES = {
-  [ENEMY_KIND.GOBLIN]:  { hp: 1, speed: 80,  score: 10, color: COLORS.goblinGreen, radius: 16 },
-  [ENEMY_KIND.WOLF]:    { hp: 1, speed: 140, score: 14, color: COLORS.wolfGray,    radius: 17 },
-  [ENEMY_KIND.ORC]:     { hp: 4, speed: 55,  score: 40, color: COLORS.orcRed,      radius: 22, frontShield: 0.5 },
-  [ENEMY_KIND.ARCHER]:  { hp: 2, speed: 60,  score: 30, color: COLORS.bone,        radius: 17, fireRate: 1.6, stopY: 0.55 },
-  [ENEMY_KIND.GOLDEN]:  { hp: 2, speed: 90,  score: 80, color: COLORS.gold,        radius: 18, gems: 2 },
+// 적 정의
+export const ENEMIES = {
+  soldier: { name: 'SOLDIER', hp: 60,  speed: 60,  bounty: 8,  scoreVal: 10, tile: 'ENEMY_SOLDIER', scale: 0.6 },
+  scout:   { name: 'SCOUT',   hp: 40,  speed: 110, bounty: 10, scoreVal: 14, tile: 'ENEMY_SCOUT',   scale: 0.55 },
+  heavy:   { name: 'HEAVY',   hp: 180, speed: 45,  bounty: 18, scoreVal: 30, tile: 'ENEMY_HEAVY',   scale: 0.65 },
+  tank:    { name: 'TANK',    hp: 420, speed: 30,  bounty: 36, scoreVal: 60, tile: 'ENEMY_TANK',    scale: 0.85 },
+  boss:    { name: 'BOSS',    hp: 1800, speed: 22, bounty: 200, scoreVal: 500, tile: 'ENEMY_BOSS',  scale: 1.1 },
 };
 
-// ── 콤보 ──
-export const COMBO = {
-  windowMs: 1200,         // 다음 킬까지 콤보 유지 시간
-  bonusPerStep: 0.08,     // 콤보당 추가 배율
-  maxMul: 5.0,
-};
-
-// 콤보 등급 배너 (이상 도달 시 표시)
-export const COMBO_RANKS = [
-  { at: 5,  label: 'GLORY!',     color: COLORS.gold },
-  { at: 12, label: 'VALOR!',     color: COLORS.gemBlue },
-  { at: 20, label: 'TRIUMPH!',   color: COLORS.capeRed },
-  { at: 35, label: 'CONQUEROR!', color: 0xff6b8a },
-  { at: 60, label: 'LEGEND!',    color: COLORS.parchment },
-];
-
-// 등급컷 (Step 5 결과 화면용)
+// 등급컷
 export const GRADE_CUTS = {
   S: 8000,
   A: 4500,
   B: 2000,
-};
-
-// ── 웨이브 ──
-// 일반 웨이브 4 + 보스 1. 각 웨이브는 (duration초 동안 스폰) 후 모든 적 소탕될 때까지 지속.
-// spawnRate는 베이스 간격(낮을수록 빠름).
-export const WAVES = [
-  {
-    label: 'WAVE 1',
-    duration: 12,
-    spawnRate: 1.20,
-    weights: [
-      { kind: ENEMY_KIND.GOBLIN, w: 0.70 },
-      { kind: ENEMY_KIND.WOLF,   w: 0.18 },
-      { kind: ENEMY_KIND.ARCHER, w: 0.10 },
-      { kind: ENEMY_KIND.GOLDEN, w: 0.02 },
-    ],
-  },
-  {
-    label: 'WAVE 2',
-    duration: 13,
-    spawnRate: 1.00,
-    weights: [
-      { kind: ENEMY_KIND.GOBLIN, w: 0.45 },
-      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
-      { kind: ENEMY_KIND.ORC,    w: 0.10 },
-      { kind: ENEMY_KIND.ARCHER, w: 0.12 },
-      { kind: ENEMY_KIND.GOLDEN, w: 0.03 },
-    ],
-  },
-  {
-    label: 'WAVE 3',
-    duration: 14,
-    spawnRate: 0.85,
-    weights: [
-      { kind: ENEMY_KIND.GOBLIN, w: 0.30 },
-      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
-      { kind: ENEMY_KIND.ORC,    w: 0.18 },
-      { kind: ENEMY_KIND.ARCHER, w: 0.18 },
-      { kind: ENEMY_KIND.GOLDEN, w: 0.04 },
-    ],
-  },
-  {
-    label: 'WAVE 4',
-    duration: 15,
-    spawnRate: 0.72,
-    weights: [
-      { kind: ENEMY_KIND.GOBLIN, w: 0.22 },
-      { kind: ENEMY_KIND.WOLF,   w: 0.30 },
-      { kind: ENEMY_KIND.ORC,    w: 0.25 },
-      { kind: ENEMY_KIND.ARCHER, w: 0.18 },
-      { kind: ENEMY_KIND.GOLDEN, w: 0.05 },
-    ],
-  },
-  {
-    label: 'WAVE 5',
-    duration: 0,           // 보스 웨이브 — 보스 등장 (Step 5)
-    boss: true,
-  },
-];
-
-// ── 업그레이드 ──
-// apply(weapon, king) 함수에서 즉시 효과 부여.
-export const UPGRADES = [
-  {
-    id: 'rapid', name: 'RAPID FIRE', glyph: '➶',
-    desc: '활시위가 빨라진다',
-    color: 0xf4c542,
-    apply: (w) => { w.fireRate = Math.max(0.07, w.fireRate * 0.78); },
-  },
-  {
-    id: 'multi', name: 'TWIN ARROWS', glyph: '⫷',
-    desc: '한 번에 화살 +1',
-    color: 0xb38aff,
-    apply: (w) => { w.multishot += 1; },
-  },
-  {
-    id: 'pierce', name: 'PIERCE', glyph: '↠',
-    desc: '화살이 적을 관통',
-    color: 0x8ad0ff,
-    apply: (w) => { w.pierce += 1; },
-  },
-  {
-    id: 'damage', name: 'SHARP STEEL', glyph: '⚔',
-    desc: '데미지 +1',
-    color: 0xe0b070,
-    apply: (w) => { w.damage += 1; },
-  },
-  {
-    id: 'crit', name: 'CRIT EYE', glyph: '✦',
-    desc: '크리티컬 확률 +10%',
-    color: 0xffd070,
-    apply: (w) => { w.crit = Math.min(0.85, w.crit + 0.10); },
-  },
-  {
-    id: 'speed', name: 'SWIFT BOOTS', glyph: '⇶',
-    desc: '왕의 이동 속도 +15%',
-    color: 0x9ad0a0,
-    apply: (w, k) => { k.moveSpeed *= 1.15; },
-  },
-  {
-    id: 'maxhp', name: 'IRON THRONE', glyph: '♥',
-    desc: '최대 HP +1, HP 회복',
-    color: 0xff7080,
-    apply: (w, k) => { k.maxHp += 1; k.hp = k.maxHp; },
-  },
-  {
-    id: 'projspeed', name: 'TAUT BOWSTRING', glyph: '➟',
-    desc: '화살 속도 +30%',
-    color: 0xc0e0ff,
-    apply: (w) => { w.projectileSpeed *= 1.3; },
-  },
-  {
-    id: 'lifesteal', name: 'BLOOD CROWN', glyph: '✝',
-    desc: '15% 확률로 처치 시 HP +1',
-    color: 0xc8302d,
-    apply: (w) => { w.lifesteal = (w.lifesteal || 0) + 0.15; },
-  },
-  {
-    id: 'magnet', name: 'GEM MAGNET', glyph: '◈',
-    desc: '아이템 자석 범위 확대',
-    color: 0x4a8bc2,
-    apply: (w, k) => { k.magnetRadius = (k.magnetRadius || 140) + 80; },
-  },
-];
-
-// 무기 베이스 스탯 (King.js 안에도 있지만 여기서 한 번 더 정의 — 기획자가 보기 쉽게)
-export const WEAPON_BASE = {
-  damage: 1,
-  fireRate: 0.28,
-  projectileSpeed: 760,
-  multishot: 1,
-  pierce: 0,
-  splashRadius: 0,
-  crit: 0.05,
-  lifesteal: 0,
 };
