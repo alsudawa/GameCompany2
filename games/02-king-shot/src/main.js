@@ -1,17 +1,16 @@
-// King Shot 진입점.
-// Phaser 인스턴스 생성 + 씬 등록.
+// King Shot Tower Defense — Phaser 진입점.
 
 import { GAME } from './config.js';
 import { BootScene } from './scenes/BootScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
-import { UpgradeScene } from './scenes/UpgradeScene.js';
 import { ResultScene } from './scenes/ResultScene.js';
 
 const config = {
   type: Phaser.AUTO,
   parent: 'game-root',
-  backgroundColor: '#1a2a18', // 따뜻한 어두운 그린 (깊은 숲)
+  backgroundColor: '#3a7d44',
+  pixelArt: false,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -19,7 +18,7 @@ const config = {
     height: GAME.height,
   },
   input: { activePointers: 4 },
-  scene: [BootScene, MenuScene, GameScene, UpgradeScene, ResultScene],
+  scene: [BootScene, MenuScene, GameScene, ResultScene],
 };
 
 new Phaser.Game(config);
