@@ -45,6 +45,8 @@ export class Tower extends Phaser.GameObjects.Container {
 
     this.fireCooldown = 0;
     this.target = null;
+    this.totalInvested = 0;  // 구매 + 업그레이드에 쓴 누적 골드
+    this.slot = null;        // 이 타워가 놓인 슬롯 참조 (판매 시 복구)
     this.refreshTier();
 
     // 등장 트윈

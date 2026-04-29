@@ -80,6 +80,8 @@ export class GameScene extends Phaser.Scene {
     this.spawnQueue = [];          // 이번 웨이브에서 토출할 [t, kind] 리스트
     this.spawnElapsed = 0;
     this.isOver = false;
+    this.isEliteWave = false;      // 3웨이브마다 적 HP 1.5배 + 주황 틴트
+    this.livesDangerTween = null;  // 라이프 위기 펄스 트윈 참조
 
     // 9) HUD
     this.drawHud();
@@ -404,6 +406,9 @@ export class GameScene extends Phaser.Scene {
     if (!wave) return;
     this.waveActive = true;
     this.spawnElapsed = 0;
+    // 3번째 웨이브마다 엘리트 (waveIdx 2, 5, 8 …)
+    this.isEliteWave = (this.waveIdx > 0 && (this.waveIdx + 1) % 3 === 0);
+
     // 스폰 큐 빌드 — 모든 unit 군의 (t, kind) 평탄화 후 정렬
     this.spawnQueue = [];
     for (const u of wave.units) {
@@ -415,10 +420,12 @@ export class GameScene extends Phaser.Scene {
     this.waveSpawnTotal = this.spawnQueue.length;
     this.waveSpawned = 0;
 
-    // 배너
-    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, wave.label, {
-      fontFamily: FONT.display, fontSize: '32px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+    // 파 배너
+    const bannerColor = this.isEliteWave ? '#ff8c00' : '#f4c542';
+    const bannerLabel = this.isEliteWave ? `⚠  ${wave.label}  ELITE` : wave.label;
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, bannerLabel, {
+      fontFamily: FONT.display, fontSize: '30px', fontStyle: '900',
+      color: bannerColor, stroke: '#3e2e1e', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
     this.tweens.add({
       targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
@@ -429,6 +436,10 @@ export class GameScene extends Phaser.Scene {
       delay: 900, duration: 360,
       onComplete: () => big.destroy(),
     });
+    if (this.isEliteWave) {
+      Juice.shake(this, 0.012, 300);
+      Juice.flash(this, 0xff8c00, 200);
+    }
     Audio.levelUp();
 
     if (this.waveBtn) this.waveBtn.setVisible(false);
@@ -457,7 +468,11 @@ export class GameScene extends Phaser.Scene {
   spawnEnemy(kind) {
     const e = this.enemies.find(en => !en.alive);
     if (!e) return;
-    e.reset(kind, this.path, this.hpMul, this.speedMul);
+    const hpMul = this.hpMul * (this.isEliteWave ? 1.5 : 1);
+    e.reset(kind, this.path, hpMul, this.speedMul);
+    if (this.isEliteWave) {
+      e.body.setTint(0xff8c00);  // 주황 틴트로 엘리트 표시
+    }
     this.waveSpawned++;
   }
 
@@ -572,47 +587,108 @@ export class GameScene extends Phaser.Scene {
   selectTower(tower) {
     this.selectedTower = tower;
     tower.showRange();
-    // 업그레이드/판매 미니 메뉴
-    const c = this.add.container(tower.x, tower.y - 50).setDepth(200);
-    const w = 110, h = 28;
+    // 업그레이드/판매 미니 메뉴 (두 행)
+    const w = 118, rowH = 26, gap = 3;
+    const totalH = rowH * 2 + gap;
+    const c = this.add.container(tower.x, tower.y - 54).setDepth(200);
+
+    // 배경
     const bg = this.add.graphics();
     bg.fillStyle(0x000000, 0.55);
-    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
+    bg.fillRoundedRect(-w / 2 + 2, -totalH / 2 + 2, w, totalH, 6);
     bg.fillStyle(COLORS.parchment, 0.95);
-    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.fillRoundedRect(-w / 2, -totalH / 2, w, totalH, 6);
     bg.lineStyle(2, COLORS.woodDark, 1);
-    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.strokeRoundedRect(-w / 2, -totalH / 2, w, totalH, 6);
     bg.lineStyle(1, COLORS.goldHud, 0.85);
-    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
+    bg.strokeRoundedRect(-w / 2 + 2, -totalH / 2 + 2, w - 4, totalH - 4, 5);
     c.add(bg);
+
+    // 위 행: 업그레이드 or MAX
+    const upY = -totalH / 2 + rowH / 2;
     if (tower.canUpgrade()) {
       const cost = tower.nextCost;
       const aff = this.gold >= cost;
-      const t = this.add.text(0, 0, `▲ UPGRADE ${cost}g`, {
+      const upBtn = this.add.container(0, upY);
+      const upHit = this.add.graphics();
+      upHit.fillStyle(aff ? 0xf4e8c8 : 0xeeddcc, 0.01);
+      upHit.fillRoundedRect(-w / 2 + 2, -rowH / 2, w - 4, rowH, 5);
+      const upT = this.add.text(0, 0, `▲ UPGRADE  ${cost}g`, {
         fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
         color: aff ? '#3e2e1e' : '#a04040',
       }).setOrigin(0.5);
-      t.setLetterSpacing?.(1);
-      c.add(t);
-      c.setSize(w, h);
-      c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
-      c.on('pointerdown', (p, lx, ly, evt) => {
+      upT.setLetterSpacing?.(1);
+      upBtn.add([upHit, upT]);
+      upBtn.setSize(w, rowH);
+      upBtn.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -rowH / 2, w, rowH), Phaser.Geom.Rectangle.Contains);
+      upBtn.on('pointerdown', (p, lx, ly, evt) => {
         evt.stopPropagation?.();
         if (this.gold < cost) { Audio.miss(); return; }
         this.gold -= cost;
+        tower.totalInvested += cost;
         tower.upgrade();
         this.deselectTower();
         this.updateHud();
         Audio.purchase();
       });
+      c.add(upBtn);
     } else {
-      const t = this.add.text(0, 0, 'MAX TIER ★★★', {
+      const maxT = this.add.text(0, upY, 'MAX TIER ★★★', {
         fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
         color: '#3e2e1e',
       }).setOrigin(0.5);
-      c.add(t);
+      c.add(maxT);
     }
+
+    // 구분선
+    const div = this.add.graphics();
+    div.lineStyle(1, COLORS.woodDark, 0.4);
+    div.lineBetween(-w / 2 + 6, gap / 2, w / 2 - 6, gap / 2);
+    c.add(div);
+
+    // 아래 행: 판매 (60% 환급)
+    const sellRefund = Math.floor(tower.totalInvested * 0.6);
+    const sellY = totalH / 2 - rowH / 2;
+    const sellBtn = this.add.container(0, sellY);
+    const sellHit = this.add.graphics();
+    sellHit.fillStyle(0xfff0f0, 0.01);
+    sellHit.fillRoundedRect(-w / 2 + 2, -rowH / 2, w - 4, rowH, 5);
+    const sellT = this.add.text(0, 0, `✕ SELL  +${sellRefund}g`, {
+      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+      color: '#a04040',
+    }).setOrigin(0.5);
+    sellT.setLetterSpacing?.(1);
+    sellBtn.add([sellHit, sellT]);
+    sellBtn.setSize(w, rowH);
+    sellBtn.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -rowH / 2, w, rowH), Phaser.Geom.Rectangle.Contains);
+    sellBtn.on('pointerdown', (p, lx, ly, evt) => {
+      evt.stopPropagation?.();
+      this.sellTower(tower, sellRefund);
+    });
+    c.add(sellBtn);
+
     this.towerMenu = c;
+  }
+
+  sellTower(tower, refund) {
+    this.gold += refund;
+    // 슬롯 복구
+    if (tower.slot) {
+      tower.slot.tower = null;
+      tower.slot.image.setVisible(true);
+    }
+    // 타워 목록에서 제거
+    const idx = this.towers.indexOf(tower);
+    if (idx >= 0) this.towers.splice(idx, 1);
+    this.deselectTower();
+
+    Juice.flash(this, COLORS.goldHud, 160);
+    Juice.popText(this, tower.x, tower.y - 20, `+${refund}g`, {
+      color: COLORS.goldHud, size: 18, rise: 36, duration: 600,
+    });
+    Audio.purchase?.();
+    tower.destroy();
+    this.updateHud();
   }
 
   deselectTower() {
@@ -633,6 +709,8 @@ export class GameScene extends Phaser.Scene {
   placeTower(slot, kind) {
     const tower = new Tower(this, slot.x, slot.y, kind);
     tower.setDepth(40);
+    tower.totalInvested = TOWERS[kind].cost[0];
+    tower.slot = slot;
     slot.tower = tower;
     slot.image.setVisible(false);
     this.towers.push(tower);
@@ -849,6 +927,29 @@ export class GameScene extends Phaser.Scene {
     if (!this.hudGold) return;
     this.hudGold.setText(String(this.gold));
     this.hudLivesText.setText(`♥ ${this.lives}`);
+
+    // 라이프 위기 연출: ≤3 라이프면 붉은 맥동
+    if (this.lives <= 3 && this.lives > 0) {
+      this.hudLivesText.setColor('#ff2020');
+      if (!this.livesDangerTween) {
+        this.livesDangerTween = this.tweens.add({
+          targets: this.hudLivesText,
+          scaleX: { from: 1, to: 1.18 },
+          scaleY: { from: 1, to: 1.18 },
+          duration: 380,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.InOut',
+        });
+      }
+    } else {
+      this.hudLivesText.setColor('#ff6b6b');
+      if (this.livesDangerTween) {
+        this.livesDangerTween.stop();
+        this.livesDangerTween = null;
+        this.hudLivesText.setScale(1);
+      }
+    }
     if (this.waveActive) {
       this.hudWave.setText(`WAVE ${this.waveIdx + 1}/${this.stage.waves.length}`);
       this.hudWave.setColor('#f4c542');

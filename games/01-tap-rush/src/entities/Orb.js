@@ -4,19 +4,21 @@
 //     강한 맥동 레드 할로, 큰 ⛔ 아이콘, 외곽 "AVOID" 경고 텍스트.
 // 히트박스는 시각 크기와 분리되어 관대함 유지.
 
-import { COLORS } from '../config.js';
+import { COLORS, POWERUP } from '../config.js';
 import { UI } from '../../../../shared/ui.js';
 
 export const ORB_KIND = {
   NORMAL: 'normal',
   RARE: 'rare',
   BOMB: 'bomb',
+  POWERUP: 'powerup',
 };
 
 const RADIUS = {
   normal: 30,
   rare: 38,
   bomb: 34,
+  powerup: 36,
 };
 
 const MAX_HIT = 62;
@@ -60,6 +62,7 @@ export class Orb extends Phaser.GameObjects.Container {
 
     this.vy = 0;
     this.kind = ORB_KIND.NORMAL;
+    this.powerupType = null;
     this.alive = false;
     this.spawnTime = 0;
     this._pulse = 0;
@@ -73,9 +76,10 @@ export class Orb extends Phaser.GameObjects.Container {
     this.setVisible(false).setActive(false);
   }
 
-  reset(x, y, kind, vy) {
+  reset(x, y, kind, vy, powerupType = null) {
     this.setPosition(x, y);
     this.kind = kind;
+    this.powerupType = powerupType;
     this.vy = vy;
     this.alive = true;
     this._pulse = Math.random() * Math.PI * 2;
@@ -90,6 +94,7 @@ export class Orb extends Phaser.GameObjects.Container {
     // 스테이지 팔레트 우선. 씬에 stage가 없으면 (예: 프리뷰) 기본색으로 폴백.
     const palette = this.scene.stage?.palette;
     const color =
+      kind === ORB_KIND.POWERUP ? (powerupType?.color ?? 0x00ffcc) :
       kind === ORB_KIND.RARE ? (palette?.rare ?? COLORS.gold) :
       kind === ORB_KIND.BOMB ? (palette?.bomb ?? COLORS.red) :
       (palette?.normal ?? COLORS.cyan);
@@ -105,6 +110,9 @@ export class Orb extends Phaser.GameObjects.Container {
       // 큰 금지 기호 + 외곽 AVOID 회전 라벨
       this.icon.setText('⛔').setColor('#ffffff').setFontSize(34);
       this.avoidLabel.setVisible(true);
+    } else if (kind === ORB_KIND.POWERUP) {
+      this.icon.setText(powerupType?.icon ?? '★').setColor('#000000').setFontSize(24);
+      this.avoidLabel.setVisible(false);
     } else {
       this.icon.setText('').setColor('#ffffff').setFontSize(22);
       this.avoidLabel.setVisible(false);
@@ -129,6 +137,12 @@ export class Orb extends Phaser.GameObjects.Container {
     const r = this._radius;
     const c = this._color;
     const isBomb = this.kind === ORB_KIND.BOMB;
+    const isPowerup = this.kind === ORB_KIND.POWERUP;
+
+    if (isPowerup) {
+      this._drawPowerup(r, c, pulseAmp);
+      return;
+    }
 
     // 할로 — 폭탄은 더 강한 맥동 + 진한 레드
     this.halo.clear();
@@ -251,16 +265,18 @@ export class Orb extends Phaser.GameObjects.Container {
       this.rotation = Math.sin(this._pulse * 2.5) * 0.18;
     }
 
-    if (this.kind === ORB_KIND.RARE) {
+    if (this.kind === ORB_KIND.RARE || this.kind === ORB_KIND.POWERUP) {
       this._trailTimer -= dt;
+      const trailInterval = this.kind === ORB_KIND.POWERUP ? 0.035 : 0.045;
       if (this._trailTimer <= 0) {
-        this._trailTimer = 0.045;
-        const dot = this.scene.add.circle(this.x, this.y, 6, this._color, 0.55).setDepth(this.depth - 1);
+        this._trailTimer = trailInterval;
+        const dotR = this.kind === ORB_KIND.POWERUP ? 8 : 6;
+        const dot = this.scene.add.circle(this.x, this.y, dotR, this._color, 0.65).setDepth(this.depth - 1);
         this.scene.tweens.add({
           targets: dot,
           alpha: 0,
           scale: 0.2,
-          duration: 340,
+          duration: 380,
           ease: 'Cubic.Out',
           onComplete: () => dot.destroy(),
         });
@@ -268,6 +284,45 @@ export class Orb extends Phaser.GameObjects.Container {
     }
 
     if (this.y > this.scene.scale.height + 60) this.deactivate();
+  }
+
+  _drawPowerup(r, c, pulseAmp) {
+    const pulse = (Math.sin(this._pulse * 2.5) + 1) * 0.5;
+
+    // 할로
+    this.halo.clear();
+    this.halo.fillStyle(c, 0.08 + pulse * 0.12);
+    this.halo.fillCircle(0, 0, r + 32 + pulseAmp * 3);
+    this.halo.fillStyle(c, 0.18 + pulse * 0.18);
+    this.halo.fillCircle(0, 0, r + 16 + pulseAmp * 2);
+
+    // 외부 글로우
+    this.glow.clear();
+    this.glow.fillStyle(0x001a0a, 0.9);
+    this.glow.fillCircle(0, 0, r + 5);
+    this.glow.lineStyle(3, c, 1);
+    this.glow.strokeCircle(0, 0, r + 5);
+    this.glow.lineStyle(1, 0xffffff, 0.7 + pulse * 0.3);
+    this.glow.strokeCircle(0, 0, r + 8);
+
+    // 본체 — 짙은 녹/금 디스크 + 밝은 코어
+    this.body.clear();
+    this.body.fillStyle(0x003322, 1);
+    this.body.fillCircle(0, 0, r);
+    this.body.fillStyle(c, 0.5 + pulse * 0.3);
+    this.body.fillCircle(0, 0, r * 0.82);
+    this.body.fillStyle(0xffffff, 0.85);
+    this.body.fillCircle(0, 0, r * 0.36);
+    this.body.fillStyle(c, 0.9);
+    this.body.fillCircle(0, 0, r * 0.20);
+    // 외곽 링
+    this.body.lineStyle(2, 0xffffff, 0.9);
+    this.body.strokeCircle(0, 0, r);
+
+    // 쉬머 — 회전 대시 링 2중
+    this.shimmer.clear();
+    UI.drawDashedCircle(this.shimmer, 0, 0, r + 12, c, 0.9, 16, 3, this._shimmerAngle);
+    UI.drawDashedCircle(this.shimmer, 0, 0, r + 20, 0xffffff, 0.5, 24, 1.5, -this._shimmerAngle * 1.4);
   }
 
   pop() {

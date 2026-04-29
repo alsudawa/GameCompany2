@@ -26,6 +26,13 @@ export const PROB = {
   rare: 0.12,
   bombStart: 0.06,
   bombEnd: 0.18,
+  powerup: 0.04,   // 4% 확률로 파워업 오브 스폰
+};
+
+// 파워업 종류 및 효과 지속 시간
+export const POWERUP = {
+  SLOWMO:       { id: 'SLOWMO',       icon: '⏱', color: 0x00ffcc, label: 'SLOW!',   durationMs: 4000 },
+  DOUBLE_SCORE: { id: 'DOUBLE_SCORE', icon: '×2', color: 0xffd700, label: '×2 SCORE', durationMs: 5000 },
 };
 
 // 세션 중 레벨 진행. `at`(초)에 진입, 해당 시점부터 아래 설정 적용.

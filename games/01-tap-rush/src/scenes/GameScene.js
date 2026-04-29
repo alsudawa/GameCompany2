@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage, POWERUP,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -65,6 +65,12 @@ export class GameScene extends Phaser.Scene {
     this.reachedMilestones = new Set();
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
+    // 파워업 상태
+    this.activePowerup = null;   // 현재 활성 파워업 종류 (POWERUP.SLOWMO 등)
+    this.powerupUntil = 0;       // 만료 시각 (scene.time.now 기준)
+    // 카운트다운 위기 연출용 경계 추적
+    this._lastDangerSec = null;
+    this._lastTimeSec = null;
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
 
@@ -132,6 +138,12 @@ export class GameScene extends Phaser.Scene {
 
     // LINK 쌍의 연결선용 그래픽 (오브 뒤, 판정선 위)
     this.linkLines = this.add.graphics().setDepth(-4);
+
+    // 파워업 활성 배지 (중앙 상단 HUD 아래)
+    this.hudPowerup = this.add.text(width / 2, 118, '', {
+      fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
+      color: '#00ffcc', stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(202).setLetterSpacing(2);
 
     // 오브 낙하 놓침(fall-through) → MISS 처리
     this.events.on('orbMissed', (orb) => this.onOrbMiss(orb));
@@ -476,7 +488,28 @@ export class GameScene extends Phaser.Scene {
       // 마지막 5초 긴박감
       if (sec <= 5 && sec > 0) {
         this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
+        // 5초·3초 경계: 한 번만 흔들림 + 플래시
+        if (sec !== this._lastDangerSec) {
+          this._lastDangerSec = sec;
+          if (sec === 5) {
+            Juice.shake(this, 0.007, 140);
+            Juice.flash(this, COLORS.gold, 100);
+          } else if (sec === 3) {
+            Juice.shake(this, 0.014, 200);
+            Juice.flash(this, COLORS.red, 140);
+          }
+        }
+        // 1초마다 타임 텍스트 펀치
+        if (sec !== this._lastTimeSec) {
+          this._lastTimeSec = sec;
+          Juice.punch(this, this.hudTime, 1.4, 180);
+          if (sec <= 3) Audio.tap?.();
+        }
       } else {
+        if (this._lastDangerSec !== null) {
+          this._lastDangerSec = null;
+          this._lastTimeSec = null;
+        }
         this.hudTime.setColor('#e8ecf5');
       }
 
@@ -490,6 +523,16 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (this.remaining <= 0) this.endSession();
+
+      // 파워업 만료 체크
+      if (this.activePowerup && this.time.now >= this.powerupUntil) {
+        this.activePowerup = null;
+        this.hudPowerup.setText('');
+      } else if (this.activePowerup) {
+        const left = Math.ceil((this.powerupUntil - this.time.now) / 1000);
+        const color = '#' + this.activePowerup.color.toString(16).padStart(6, '0');
+        this.hudPowerup.setText(`${this.activePowerup.icon} ${this.activePowerup.label} ${left}s`).setColor(color);
+      }
     }
 
     for (const o of this.orbs) o.update(dt);
@@ -566,8 +609,12 @@ export class GameScene extends Phaser.Scene {
 
     const roll = Math.random();
     let kind;
-    if (roll < rareProb) kind = ORB_KIND.RARE;
-    else if (roll < rareProb + bombProb) kind = ORB_KIND.BOMB;
+    let powerupType = null;
+    if (roll < PROB.powerup && !this.activePowerup) {
+      kind = ORB_KIND.POWERUP;
+      powerupType = Math.random() < 0.5 ? POWERUP.SLOWMO : POWERUP.DOUBLE_SCORE;
+    } else if (roll < rareProb + PROB.powerup) kind = ORB_KIND.RARE;
+    else if (roll < rareProb + PROB.powerup + bombProb) kind = ORB_KIND.BOMB;
     else kind = ORB_KIND.NORMAL;
 
     // LINK 쌍: LVL2 이후 일반 오브에서 스테이지별 확률로 대체. 항상 좌/우 분리
@@ -578,8 +625,9 @@ export class GameScene extends Phaser.Scene {
       if (a && b) {
         const lx = Phaser.Math.Between(marginX, mid - 40);
         const rx = Phaser.Math.Between(mid + 40, width - marginX);
-        a.reset(lx, y, ORB_KIND.NORMAL, speed);
-        b.reset(rx, y, ORB_KIND.NORMAL, speed);
+        const linkSpeed = this.activePowerup?.id === 'SLOWMO' ? speed * 0.45 : speed;
+        a.reset(lx, y, ORB_KIND.NORMAL, linkSpeed);
+        b.reset(rx, y, ORB_KIND.NORMAL, linkSpeed);
         a.linkPartner = b;
         b.linkPartner = a;
         this._lastLane = 'both';
@@ -600,7 +648,8 @@ export class GameScene extends Phaser.Scene {
 
     const orb = this.orbs.find(o => !o.alive);
     if (!orb) return;
-    orb.reset(x, y, kind, speed);
+    const orbSpeed = (kind !== ORB_KIND.BOMB && this.activePowerup?.id === 'SLOWMO') ? speed * 0.45 : speed;
+    orb.reset(x, y, kind, orbSpeed, powerupType);
   }
 
   onOrbTap(obj) {
@@ -622,6 +671,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === ORB_KIND.POWERUP) {
+      this.activatePowerup(obj.powerupType);
+      obj.pop();
+      return;
+    }
+
     // 타이밍 판정 (TAP ZONE 기준)
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
@@ -635,7 +690,8 @@ export class GameScene extends Phaser.Scene {
 
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
-    const mul = comboMul * judge.mul;
+    const doubleMul = this.activePowerup?.id === 'DOUBLE_SCORE' ? 2 : 1;
+    const mul = comboMul * judge.mul * doubleMul;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;
@@ -828,6 +884,24 @@ export class GameScene extends Phaser.Scene {
     this.borderFx.strokeRect(3, 3, width - 6, height - 6);
     this.borderFx.lineStyle(16, color, alpha * 0.25);
     this.borderFx.strokeRect(10, 10, width - 20, height - 20);
+  }
+
+  activatePowerup(type) {
+    const { width, height } = this.scale;
+    this.activePowerup = type;
+    this.powerupUntil = this.time.now + type.durationMs;
+    const hexColor = '#' + type.color.toString(16).padStart(6, '0');
+
+    Audio.rankup?.();
+    Juice.flash(this, type.color, 240);
+    Juice.ring(this, width / 2, height / 2, { color: type.color, radius: 280, count: 2, duration: 500 });
+    Juice.popText(this, width / 2, height * 0.42, type.label, {
+      color: type.color, size: 48,
+    });
+
+    if (type.id === 'SLOWMO') {
+      Juice.slowmo(this, 0.3, 800);
+    }
   }
 
   endSession() {
