@@ -44,4 +44,31 @@ export const STAGE_GATE = {
     [0, 22, 'BUSH'],
     [14, 22, 'TREE'],
   ],
+
+  // 웨이브 (각 unit: kind / count / interval(spawn 간격) / delay(시작 지연))
+  // 웨이브는 직전 웨이브 종료 후 사용자가 수동으로 시작.
+  waves: [
+    { label: 'WAVE 1/5', units: [
+      { kind: 'soldier', count: 10, interval: 0.85, delay: 0 },
+    ]},
+    { label: 'WAVE 2/5', units: [
+      { kind: 'soldier', count: 8,  interval: 0.7,  delay: 0 },
+      { kind: 'scout',   count: 5,  interval: 0.6,  delay: 6 },
+    ]},
+    { label: 'WAVE 3/5', units: [
+      { kind: 'soldier', count: 12, interval: 0.6,  delay: 0 },
+      { kind: 'heavy',   count: 4,  interval: 1.2,  delay: 4 },
+      { kind: 'scout',   count: 6,  interval: 0.55, delay: 10 },
+    ]},
+    { label: 'WAVE 4/5', units: [
+      { kind: 'scout',   count: 8,  interval: 0.5,  delay: 0 },
+      { kind: 'heavy',   count: 6,  interval: 1.1,  delay: 4 },
+      { kind: 'tank',    count: 2,  interval: 2.0,  delay: 12 },
+    ]},
+    { label: 'WAVE 5/5 — BOSS', units: [
+      { kind: 'soldier', count: 14, interval: 0.45, delay: 0 },
+      { kind: 'heavy',   count: 6,  interval: 1.0,  delay: 6 },
+      { kind: 'boss',    count: 1,  interval: 0.0,  delay: 16 },
+    ]},
+  ],
 };

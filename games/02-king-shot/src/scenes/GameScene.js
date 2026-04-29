@@ -1,12 +1,15 @@
-// GameScene — TD Step 2: 타일맵 렌더 + 경로 시각화 + 슬롯 표시.
-// (Step 3에서 적/웨이브, Step 4에서 타워 배치를 붙임)
+// GameScene — TD Step 3: 타일맵 + 경로 + 적 풀 + 웨이브 + 라이프/골드.
+// (Step 4에서 타워 배치 + 자동 사격)
 
 import { COLORS, FONT, GAME, KEY, TILE } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
+import { Juice } from '../../../../shared/juice.js';
 import { STAGE_GATE } from '../maps/stage_gate.js';
-import { buildPath, tilesAlongPath, tilePxCenter } from '../maps/path.js';
+import { buildPath, tilesAlongPath } from '../maps/path.js';
+import { Enemy } from '../entities/Enemy.js';
 
 const STAGES = { gate: STAGE_GATE };
+const ENEMY_POOL = 60;
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -35,17 +38,38 @@ export class GameScene extends Phaser.Scene {
     // 4) 타워 슬롯
     this.drawTowerSlots();
 
-    // 5) 길 폴리라인 시각화 (디버그용 옅은 라인) — Step 3 적 이동 디버그에 도움
+    // 5) 경로 빌드
     this.path = buildPath(this.stage.pathWaypoints);
-    this.drawPathOverlay();
 
     // 6) 시작/끝 마커
     this.drawSpawnAndKing();
 
-    // 7) HUD (자리만)
+    // 7) 적 풀
+    this.enemies = [];
+    for (let i = 0; i < ENEMY_POOL; i++) {
+      const e = new Enemy(this);
+      e.setDepth(50);
+      this.enemies.push(e);
+    }
+
+    // 8) 상태
+    this.gold = GAME.startGold;
+    this.lives = GAME.startLives;
+    this.score = 0;
+    this.kills = 0;
+    this.waveIdx = -1;             // 시작 전
+    this.waveSpawnTotal = 0;
+    this.waveSpawned = 0;
+    this.waveActive = false;
+    this.spawnQueue = [];          // 이번 웨이브에서 토출할 [t, kind] 리스트
+    this.spawnElapsed = 0;
+    this.isOver = false;
+
+    // 9) HUD
     this.drawHud();
 
-    // 임시 BACK 버튼
+    // 10) 시작 안내 + 첫 웨이브 버튼
+    this.makeWaveButton();
     this.makeBackBtn(width, height);
 
     Audio.playBgm('stage_dawn', { fadeIn: 0.6, volume: 0.55 });
@@ -159,19 +183,261 @@ export class GameScene extends Phaser.Scene {
     cg.fillTriangle(cx + 6, cy - 18, cx + 14, cy - 26, cx + 22, cy - 18);
   }
 
+  // ────────────── 업데이트 루프 ──────────────
+  update(time, delta) {
+    if (this.isOver) return;
+    const dt = Math.min(0.05, delta / 1000);
+
+    // 웨이브 스폰
+    if (this.waveActive && this.spawnQueue.length > 0) {
+      this.spawnElapsed += dt;
+      while (this.spawnQueue.length > 0 && this.spawnQueue[0].t <= this.spawnElapsed) {
+        const item = this.spawnQueue.shift();
+        this.spawnEnemy(item.kind);
+      }
+    }
+
+    // 적 업데이트
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const r = e.update(dt, this);
+      if (r?.reachedEnd) this.onEnemyReachedEnd(e);
+    }
+
+    // 웨이브 클리어 판정
+    if (this.waveActive && this.spawnQueue.length === 0 &&
+        !this.enemies.some(e => e.alive)) {
+      this.endWave();
+    }
+  }
+
+  // ────────────── 웨이브 ──────────────
+  startNextWave() {
+    if (this.waveActive) return;
+    this.waveIdx++;
+    const wave = this.stage.waves[this.waveIdx];
+    if (!wave) return;
+    this.waveActive = true;
+    this.spawnElapsed = 0;
+    // 스폰 큐 빌드 — 모든 unit 군의 (t, kind) 평탄화 후 정렬
+    this.spawnQueue = [];
+    for (const u of wave.units) {
+      for (let i = 0; i < u.count; i++) {
+        this.spawnQueue.push({ t: (u.delay ?? 0) + i * (u.interval ?? 0.6), kind: u.kind });
+      }
+    }
+    this.spawnQueue.sort((a, b) => a.t - b.t);
+    this.waveSpawnTotal = this.spawnQueue.length;
+    this.waveSpawned = 0;
+
+    // 배너
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, wave.label, {
+      fontFamily: FONT.display, fontSize: '32px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
+    this.tweens.add({
+      targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 360, ease: 'Back.Out',
+    });
+    this.tweens.add({
+      targets: big, alpha: 0, y: big.y - 30,
+      delay: 900, duration: 360,
+      onComplete: () => big.destroy(),
+    });
+    Audio.levelUp();
+
+    if (this.waveBtn) this.waveBtn.setVisible(false);
+    this.updateHud();
+  }
+
+  endWave() {
+    this.waveActive = false;
+    Audio.fanfare();
+    Juice.flash(this, COLORS.goldHud, 200);
+
+    if (this.waveIdx >= this.stage.waves.length - 1) {
+      // 모든 웨이브 완료 → 승리
+      this.victory();
+    } else {
+      // 다음 웨이브 버튼 활성화
+      if (this.waveBtn) this.waveBtn.setVisible(true);
+      // 골드 보너스 +30
+      this.gold += 30;
+      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+        '+30 GOLD', { color: COLORS.goldHud, size: 18 });
+    }
+    this.updateHud();
+  }
+
+  spawnEnemy(kind) {
+    const e = this.enemies.find(en => !en.alive);
+    if (!e) return;
+    e.reset(kind, this.path);
+    this.waveSpawned++;
+  }
+
+  onEnemyReachedEnd(e) {
+    this.lives = Math.max(0, this.lives - 1);
+    Juice.flash(this, COLORS.red, 220);
+    Juice.shake(this, 0.014, 200);
+    Audio.miss();
+    this.updateHud();
+    if (this.lives <= 0) this.gameOver();
+  }
+
+  // 적이 죽었을 때 GameScene에서 호출 (Step 4 타워에서 사용)
+  onEnemyKilled(e, byTower) {
+    this.gold += e.bounty;
+    this.score += e.scoreVal;
+    this.kills++;
+    Juice.popText(this, e.x, e.y - 18, `+${e.bounty}`, {
+      color: COLORS.goldHud, size: 13, rise: 26, duration: 460,
+    });
+    this.updateHud();
+  }
+
+  victory() {
+    this.isOver = true;
+    Audio.fanfare();
+    Juice.slowmo(this, 0.4, 800);
+    Juice.flash(this, COLORS.goldHud, 380);
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'VICTORY', {
+      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(700).setLetterSpacing?.(6);
+    this.tweens.add({
+      targets: big, scale: { from: 1.8, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 460, ease: 'Back.Out',
+    });
+    this.time.delayedCall(2400, () => {
+      Audio.stopBgm({ fadeOut: 0.6 });
+      this.cameras.main.fadeOut(420, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('ResultScene', {
+          victory: true, score: this.score, kills: this.kills,
+          stageId: this.stage.id,
+        });
+      });
+    });
+  }
+
+  gameOver() {
+    this.isOver = true;
+    Audio.bomb();
+    Juice.shake(this, 0.03, 500);
+    Juice.flash(this, COLORS.red, 480);
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'DEFEATED', {
+      fontFamily: FONT.display, fontSize: '46px', fontStyle: '900',
+      color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(700).setLetterSpacing?.(5);
+    this.tweens.add({
+      targets: big, scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 460, ease: 'Back.Out',
+    });
+    this.time.delayedCall(2400, () => {
+      Audio.stopBgm({ fadeOut: 0.6 });
+      this.cameras.main.fadeOut(420, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.scene.start('ResultScene', {
+          victory: false, score: this.score, kills: this.kills,
+          stageId: this.stage.id,
+        });
+      });
+    });
+  }
+
   // ────────────── HUD ──────────────
   drawHud() {
     const { width } = this.scale;
-    // 상단 배너
+
+    // 상단 검은 배너
     const bar = this.add.graphics().setDepth(100);
-    bar.fillStyle(0x000000, 0.5);
-    bar.fillRect(0, 0, width, 6);
-    // 스테이지명
-    const name = this.add.text(width / 2, 14, this.stage.name, {
-      fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
+    bar.fillStyle(0x000000, 0.55);
+    bar.fillRect(0, 0, width, 56);
+    bar.fillStyle(COLORS.goldHud, 0.6);
+    bar.fillRect(0, 54, width, 2);
+
+    // 좌측: GOLD
+    this.add.image(20, 28, KEY.tilesheet, TILE.COIN_GOLD)
+      .setScale(0.5).setDepth(101);
+    this.hudGold = this.add.text(40, 18, '0', {
+      fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
-    }).setOrigin(0.5, 0).setDepth(101);
-    name.setLetterSpacing?.(3);
+    }).setOrigin(0, 0).setDepth(101).setLetterSpacing?.(1);
+
+    // 중앙: STAGE 이름
+    this.add.text(width / 2, 8, this.stage.name, {
+      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+      color: '#d9c897',
+    }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(3);
+    this.hudWave = this.add.text(width / 2, 22, 'PRESS START', {
+      fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
+      color: '#f0e6d0', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(2);
+
+    // 우측: LIVES (하트 N개)
+    this.hudLivesText = this.add.text(width - 20, 18, '♥ 12', {
+      fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
+      color: '#ff6b6b', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(101);
+
+    this.updateHud();
+  }
+
+  updateHud() {
+    if (!this.hudGold) return;
+    this.hudGold.setText(String(this.gold));
+    this.hudLivesText.setText(`♥ ${this.lives}`);
+    if (this.waveActive) {
+      this.hudWave.setText(`WAVE ${this.waveIdx + 1}/${this.stage.waves.length}`);
+      this.hudWave.setColor('#f4c542');
+    } else if (this.waveIdx >= this.stage.waves.length - 1) {
+      this.hudWave.setText('CLEARED');
+    } else if (this.waveIdx >= 0) {
+      this.hudWave.setText('WAVE CLEAR · NEXT?');
+      this.hudWave.setColor('#9ad0a0');
+    } else {
+      this.hudWave.setText('PRESS START');
+    }
+  }
+
+  makeWaveButton() {
+    const w = 180, h = 44;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height - 50;
+    const c = this.add.container(cx, cy).setDepth(120);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.5);
+    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
+    bg.fillStyle(COLORS.red, 1);
+    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.fillStyle(COLORS.redDk, 1);
+    bg.fillRoundedRect(-w / 2, h / 2 - 5, w, 5, 6);
+    bg.lineStyle(2, COLORS.woodDark, 1);
+    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.lineStyle(1, COLORS.goldHud, 0.9);
+    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
+    c.add(bg);
+    const t = this.add.text(0, 0, '⚔ START WAVE', {
+      fontFamily: FONT.display, fontSize: '17px', fontStyle: '900',
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5);
+    t.setLetterSpacing?.(3);
+    c.add(t);
+    c.setSize(w, h);
+    c.setInteractive({ useHandCursor: true });
+    c.on('pointerover', () => this.tweens.add({ targets: c, scale: 1.06, duration: 140 }));
+    c.on('pointerout',  () => this.tweens.add({ targets: c, scale: 1, duration: 140 }));
+    c.on('pointerdown', () => {
+      Audio.purchase();
+      this.startNextWave();
+    });
+    this.waveBtn = c;
+    // 펄스
+    this.tweens.add({
+      targets: c, scale: { from: 1, to: 1.04 },
+      duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
   }
 
   makeBackBtn(width, height) {
