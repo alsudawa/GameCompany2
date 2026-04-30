@@ -1,47 +1,38 @@
-// 5개 레벨 — 스크롤링 행진. event.y에 도달하면 트리거.
-// kind:
-//   'spawn'  — 적을 즉시 다수 스폰 (화면 위쪽에서 영웅을 향해 달려옴)
-//   'gate'   — 좌/우 업그레이드 게이트 (영웅 X로 선택)
-//   'boss'   — 보스 등장 (스폰처럼 작동)
-//   'wave'   — n초 동안 일정 간격으로 스폰
+// 5개 레벨. 아레나 형식: 웨이브 시퀀스 + 각 웨이브 시작 시 등장하는 업그레이드 패드.
+// 영웅은 단일 화면 안에서 자유롭게 이동, 적이 가장자리에서 등장.
 
-const LV = {
-  // 공통 빌더 헬퍼: spawn(yPos, [['soldier', 4], ['scout', 2]])
-};
+// 패드 위치 (480x800 화면 기준)
+// 5개 슬롯을 정의: 가운데 + 4모서리 변형. 웨이브마다 인덱스로 선택.
+const PAD_SLOTS = [
+  { x: 240, y: 220 },   // 0 — 위 가운데
+  { x: 100, y: 320 },   // 1 — 좌
+  { x: 380, y: 320 },   // 2 — 우
+  { x: 240, y: 420 },   // 3 — 가운데
+  { x: 140, y: 540 },   // 4 — 좌하
+  { x: 340, y: 540 },   // 5 — 우하
+];
 
-function spawn(y, enemies) {
-  return { y, kind: 'spawn', enemies };
-}
-function wave(y, duration, interval, enemies) {
-  return { y, kind: 'wave', duration, interval, enemies };
-}
-function gate(y, left, right) {
-  return { y, kind: 'gate', left, right };
-}
-function boss(y, kind = 'boss') {
-  return { y, kind: 'boss', enemyKind: kind };
-}
+const wave = (label, spawn, pads) => ({ label, spawn, pads, completed: false });
 
 const LEVEL_GATE = {
   id: 'gate',
   label: '01',
   name: 'CASTLE GATE',
   tagline: '왕국의 첫 관문',
-  length: 4500,
   hpMul: 1.0,
   groundTint: 0xffffff,
-  events: [
-    spawn(400,  [['soldier', 4]]),
-    gate (700,  { type: 'damage', value: 5, label: '+5 DMG' }, { type: 'multishot', value: 1, label: '+1 ARROW' }),
-    spawn(1100, [['soldier', 6]]),
-    spawn(1400, [['scout', 3]]),
-    gate (1700, { type: 'firerate', value: 0.18, label: '+SPD' }, { type: 'damage', value: 12, label: '+12 DMG' }),
-    spawn(2100, [['soldier', 6], ['scout', 3]]),
-    gate (2500, { type: 'multishot', value: 1, label: '+1 ARROW' }, { type: 'multiply', value: 1.5, label: '×1.5 DMG' }),
-    spawn(2900, [['heavy', 3]]),
-    spawn(3300, [['soldier', 8], ['scout', 4]]),
-    gate (3700, { type: 'heal', value: 2, label: '+2 HP' }, { type: 'damage', value: 25, label: '+25 DMG' }),
-    boss (4200),
+  waves: [
+    wave('WAVE 1', [['soldier', 6, 0.7]],
+      [{ slot: 0, type: 'damage',    value: 5,  label: '+5' }]),
+    wave('WAVE 2', [['soldier', 6, 0.55], ['scout', 4, 0.6]],
+      [{ slot: 1, type: 'multishot', value: 1,  label: '+1' },
+       { slot: 2, type: 'firerate',  value: 0.18, label: '+SPD' }]),
+    wave('WAVE 3', [['soldier', 8, 0.5], ['scout', 4, 0.55], ['heavy', 2, 1.2]],
+      [{ slot: 3, type: 'damage',    value: 12, label: '+12' }]),
+    wave('WAVE 4', [['scout', 8, 0.45], ['heavy', 4, 1.0]],
+      [{ slot: 4, type: 'multiply',  value: 1.5, label: '×1.5' },
+       { slot: 5, type: 'heal',      value: 2,  label: '+2 HP' }]),
+    wave('BOSS',   [['boss', 1, 0]], []),
   ],
 };
 
@@ -50,21 +41,20 @@ const LEVEL_FOREST = {
   label: '02',
   name: 'WHISPERING FOREST',
   tagline: '속삭이는 숲의 매복',
-  length: 4800,
   hpMul: 1.10,
   groundTint: 0xc8d8b0,
-  events: [
-    spawn(400,  [['soldier', 6]]),
-    gate (700,  { type: 'damage', value: 8, label: '+8 DMG' }, { type: 'firerate', value: 0.18, label: '+SPD' }),
-    spawn(1100, [['scout', 6]]),
-    spawn(1500, [['soldier', 4], ['heavy', 1]]),
-    gate (1900, { type: 'multishot', value: 1, label: '+1 ARROW' }, { type: 'damage', value: 20, label: '+20 DMG' }),
-    spawn(2300, [['heavy', 3], ['scout', 4]]),
-    gate (2700, { type: 'multiply', value: 1.6, label: '×1.6' }, { type: 'multishot', value: 2, label: '+2 ARROW' }),
-    spawn(3100, [['soldier', 8], ['heavy', 2]]),
-    spawn(3600, [['scout', 8]]),
-    gate (4100, { type: 'heal', value: 3, label: '+3 HP' }, { type: 'damage', value: 40, label: '+40 DMG' }),
-    boss (4500),
+  waves: [
+    wave('WAVE 1', [['soldier', 8, 0.6]],
+      [{ slot: 0, type: 'damage', value: 8, label: '+8' }]),
+    wave('WAVE 2', [['scout', 8, 0.45], ['soldier', 4, 0.6]],
+      [{ slot: 1, type: 'multishot', value: 1, label: '+1' },
+       { slot: 2, type: 'damage',   value: 12, label: '+12' }]),
+    wave('WAVE 3', [['heavy', 4, 1.0], ['scout', 6, 0.5]],
+      [{ slot: 3, type: 'firerate', value: 0.20, label: '+SPD' }]),
+    wave('WAVE 4', [['soldier', 10, 0.45], ['heavy', 4, 0.95]],
+      [{ slot: 4, type: 'multiply',  value: 1.6, label: '×1.6' },
+       { slot: 5, type: 'multishot', value: 1,   label: '+1' }]),
+    wave('BOSS',   [['scout', 4, 0.5], ['boss', 1, 0]], []),
   ],
 };
 
@@ -73,21 +63,20 @@ const LEVEL_PASS = {
   label: '03',
   name: 'MOUNTAIN PASS',
   tagline: '눈 덮인 산길',
-  length: 5000,
   hpMul: 1.20,
   groundTint: 0xe6eef4,
-  events: [
-    spawn(400,  [['scout', 6]]),
-    gate (700,  { type: 'firerate', value: 0.22, label: '+SPD' }, { type: 'damage', value: 12, label: '+12 DMG' }),
-    spawn(1100, [['soldier', 8]]),
-    spawn(1500, [['heavy', 3]]),
-    gate (1900, { type: 'multishot', value: 1, label: '+1 ARROW' }, { type: 'multiply', value: 1.5, label: '×1.5' }),
-    spawn(2300, [['scout', 10]]),
-    gate (2700, { type: 'damage', value: 30, label: '+30 DMG' }, { type: 'firerate', value: 0.20, label: '+SPD' }),
-    spawn(3100, [['heavy', 4], ['soldier', 6]]),
-    spawn(3700, [['scout', 8], ['heavy', 3]]),
-    gate (4200, { type: 'multishot', value: 2, label: '+2 ARROW' }, { type: 'multiply', value: 2, label: '×2' }),
-    boss (4700),
+  waves: [
+    wave('WAVE 1', [['scout', 8, 0.5]],
+      [{ slot: 0, type: 'firerate', value: 0.22, label: '+SPD' }]),
+    wave('WAVE 2', [['soldier', 10, 0.5], ['scout', 4, 0.5]],
+      [{ slot: 1, type: 'damage',   value: 12, label: '+12' },
+       { slot: 2, type: 'multishot', value: 1, label: '+1' }]),
+    wave('WAVE 3', [['heavy', 5, 0.95], ['scout', 6, 0.45]],
+      [{ slot: 3, type: 'multiply',  value: 1.5, label: '×1.5' }]),
+    wave('WAVE 4', [['soldier', 12, 0.4], ['heavy', 5, 0.9]],
+      [{ slot: 4, type: 'damage',    value: 25, label: '+25' },
+       { slot: 5, type: 'heal',      value: 3,  label: '+3 HP' }]),
+    wave('BOSS',   [['heavy', 2, 0.5], ['boss', 1, 0]], []),
   ],
 };
 
@@ -96,21 +85,20 @@ const LEVEL_CRYPT = {
   label: '04',
   name: 'DRAGON CRYPT',
   tagline: '용의 무덤',
-  length: 5200,
   hpMul: 1.30,
   groundTint: 0x9a8aa8,
-  events: [
-    spawn(400,  [['soldier', 8]]),
-    gate (700,  { type: 'damage', value: 15, label: '+15 DMG' }, { type: 'multishot', value: 1, label: '+1 ARROW' }),
-    spawn(1100, [['heavy', 4]]),
-    spawn(1500, [['scout', 8], ['soldier', 4]]),
-    gate (1900, { type: 'firerate', value: 0.25, label: '+SPD' }, { type: 'multiply', value: 1.7, label: '×1.7' }),
-    spawn(2300, [['heavy', 5], ['scout', 6]]),
-    gate (2700, { type: 'damage', value: 45, label: '+45 DMG' }, { type: 'multishot', value: 2, label: '+2 ARROW' }),
-    spawn(3100, [['elite', 2], ['heavy', 3]]),
-    spawn(3700, [['scout', 12]]),
-    gate (4200, { type: 'heal', value: 4, label: '+4 HP' }, { type: 'multiply', value: 2.2, label: '×2.2' }),
-    boss (4900),
+  waves: [
+    wave('WAVE 1', [['soldier', 10, 0.5]],
+      [{ slot: 0, type: 'damage', value: 15, label: '+15' }]),
+    wave('WAVE 2', [['heavy', 5, 0.9], ['scout', 6, 0.45]],
+      [{ slot: 1, type: 'multishot', value: 1, label: '+1' },
+       { slot: 2, type: 'firerate',  value: 0.22, label: '+SPD' }]),
+    wave('WAVE 3', [['elite', 2, 1.0], ['scout', 8, 0.4]],
+      [{ slot: 3, type: 'multiply',  value: 1.7, label: '×1.7' }]),
+    wave('WAVE 4', [['heavy', 6, 0.85], ['elite', 3, 0.9], ['soldier', 8, 0.45]],
+      [{ slot: 4, type: 'damage',    value: 35, label: '+35' },
+       { slot: 5, type: 'heal',      value: 4,  label: '+4 HP' }]),
+    wave('BOSS',   [['elite', 2, 0.7], ['boss', 1, 0]], []),
   ],
 };
 
@@ -119,27 +107,25 @@ const LEVEL_THRONE = {
   label: '05',
   name: 'ROYAL THRONE',
   tagline: '왕좌의 결전',
-  length: 5500,
   hpMul: 1.40,
   groundTint: 0xe6c8a0,
-  events: [
-    spawn(400,  [['heavy', 4]]),
-    gate (700,  { type: 'damage', value: 20, label: '+20 DMG' }, { type: 'firerate', value: 0.25, label: '+SPD' }),
-    spawn(1100, [['scout', 10]]),
-    spawn(1500, [['heavy', 5], ['scout', 4]]),
-    gate (1900, { type: 'multishot', value: 2, label: '+2 ARROW' }, { type: 'multiply', value: 1.8, label: '×1.8' }),
-    spawn(2300, [['elite', 3], ['heavy', 4]]),
-    gate (2700, { type: 'damage', value: 60, label: '+60 DMG' }, { type: 'multiply', value: 2, label: '×2' }),
-    spawn(3100, [['elite', 4], ['scout', 8]]),
-    spawn(3700, [['heavy', 6], ['elite', 3]]),
-    gate (4200, { type: 'heal', value: 5, label: '+5 HP' }, { type: 'multiply', value: 2.5, label: '×2.5' }),
-    spawn(4600, [['elite', 5], ['heavy', 5]]),
-    boss (5200),
+  waves: [
+    wave('WAVE 1', [['heavy', 4, 0.9]],
+      [{ slot: 0, type: 'damage', value: 20, label: '+20' }]),
+    wave('WAVE 2', [['scout', 10, 0.4], ['soldier', 6, 0.5]],
+      [{ slot: 1, type: 'multishot', value: 2, label: '+2' },
+       { slot: 2, type: 'firerate',  value: 0.25, label: '+SPD' }]),
+    wave('WAVE 3', [['heavy', 6, 0.85], ['elite', 3, 0.9]],
+      [{ slot: 3, type: 'multiply',  value: 1.8, label: '×1.8' }]),
+    wave('WAVE 4', [['elite', 4, 0.85], ['heavy', 6, 0.8], ['scout', 10, 0.4]],
+      [{ slot: 4, type: 'damage',    value: 50, label: '+50' },
+       { slot: 5, type: 'multiply',  value: 2,  label: '×2' }]),
+    wave('BOSS',   [['elite', 3, 0.6], ['boss', 2, 8]], []),
   ],
 };
 
+export const PAD_SLOTS_DATA = PAD_SLOTS;
 export const LEVELS = [LEVEL_GATE, LEVEL_FOREST, LEVEL_PASS, LEVEL_CRYPT, LEVEL_THRONE];
-
 export function getLevel(id) {
   return LEVELS.find(l => l.id === id) ?? LEVEL_GATE;
 }

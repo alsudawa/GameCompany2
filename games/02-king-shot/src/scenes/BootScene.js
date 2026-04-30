@@ -9,7 +9,7 @@ export class BootScene extends Phaser.Scene {
   constructor() { super('BootScene'); }
 
   preload() {
-    // Kenney TD Top-Down — 23 cols × 13 rows × 64px
+    // Kenney TD Top-Down — 23 cols × 13 rows × 64px (잔디/장식/투사체)
     this.load.spritesheet(KEY.tilesheet, 'assets/towerDefense_tilesheet.png', {
       frameWidth: GAME.spriteTile,
       frameHeight: GAME.spriteTile,
@@ -17,7 +17,15 @@ export class BootScene extends Phaser.Scene {
       spacing: 0,
     });
 
-    // 로딩 인디케이터 (단순)
+    // Kenney Top-Down Shooter — 캐릭터 스프라이트
+    this.load.image('king',     'assets/chars/king.png');
+    this.load.image('zombie',   'assets/chars/zombie.png');
+    this.load.image('zombie2',  'assets/chars/zombie_stand.png');
+    this.load.image('robot',    'assets/chars/robot.png');
+    this.load.image('survivor', 'assets/chars/survivor.png');
+    this.load.image('elite',    'assets/chars/elite.png');
+
+    // 로딩 인디케이터
     const { width, height } = this.scale;
     const txt = this.add.text(width / 2, height / 2, 'LOADING…', {
       fontFamily: '"Cinzel", Georgia, serif',

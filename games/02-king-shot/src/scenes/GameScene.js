@@ -1,20 +1,20 @@
-// GameScene — 정통 King Shot 스타일.
-// 영웅이 자동 전진하며 드래그로 X 이동 + 자동 사격, 길에서 적 + 업그레이드 게이트.
+// GameScene — 아레나 형식 King Shot.
+// 단일 화면, 영웅이 자유 2D 이동, 적이 가장자리에서 등장, 업그레이드 패드를 밟아 강해짐.
 
 import { COLORS, FONT, GAME, KEY, TILE, UPGRADE_TYPES } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
-import { getLevel } from '../maps/levels.js';
+import { getLevel, PAD_SLOTS_DATA } from '../maps/levels.js';
 import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Projectile } from '../entities/Projectile.js';
-import { Gate } from '../entities/Gate.js';
+import { UpgradePad } from '../entities/UpgradePad.js';
 
 const ENEMY_POOL = 80;
 const PROJECTILE_POOL = 120;
-const TILE_PX = 32;       // 화면에 렌더되는 타일 크기
+const TILE_PX = 32;
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -30,13 +30,11 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#3a7d44');
     this.cameras.main.fadeIn(280, 0, 0, 0);
 
-    // 1) 스크롤 배경
-    this.buildBackground(width, height);
+    // 1) 잔디 배경 + 가장자리 장식
+    this.drawArenaBackground(width, height);
+    this.drawArenaBorders(width, height);
 
-    // 2) 사이드 장식 (월드 Y에 위치)
-    this.buildSideDecorations();
-
-    // 3) 풀
+    // 2) 풀
     this.enemies = [];
     for (let i = 0; i < ENEMY_POOL; i++) {
       const e = new Enemy(this);
@@ -49,56 +47,48 @@ export class GameScene extends Phaser.Scene {
       p.setDepth(60);
       this.projectiles.push(p);
     }
-    this.gates = [];   // 사전 생성된 게이트들
+    this.pads = [];
 
-    // 4) 영웅 (화면 고정 Y)
+    // 3) 영웅 (화면 가운데 약간 아래)
     this.king = new King(this);
-    this.king.setPosition(width / 2, GAME.heroScreenY);
+    this.king.setPosition(width / 2, height * 0.65);
     this.king.setDepth(80);
 
-    // 5) 게이트 사전 생성 (event queue에서 분리)
-    for (const ev of this.level.events) {
-      if (ev.kind === 'gate') {
-        this.spawnGate(ev.y, ev.left, ev.right);
-      }
-    }
-    this.eventQueue = this.level.events.filter(ev => ev.kind !== 'gate');
-
-    // 6) 상태
-    this.kingWorldY = 0;
+    // 4) 상태
     this.score = 0;
     this.kills = 0;
     this.coinsEarned = 0;
-    this.gemsEarned = 0;
+    this.waveIdx = -1;
+    this.waveActive = false;
+    this.spawnQueue = [];
+    this.spawnElapsed = 0;
     this.boss = null;
     this.isPlaying = false;
     this.isOver = false;
 
-    // 6) 입력
-    this._lastPointerX = null;
+    // 5) 입력 — 드래그로 영웅 이동 (자유 2D)
     this.input.on('pointerdown', (p) => this.onPointer(p));
     this.input.on('pointermove', (p) => { if (p.isDown) this.onPointer(p); });
-    const release = () => { this.king.clearDragTarget(); this._lastPointerX = null; };
+    const release = () => this.king.clearDragTarget();
     this.input.on('pointerup', release);
     this.input.on('pointerupoutside', release);
 
-    // 7) HUD
+    // 6) HUD + START WAVE
     this.drawHud();
+    this.makeWaveButton();
 
-    // 8) 카운트다운
+    Audio.playBgm('stage_dawn', { fadeIn: 0.6, volume: 0.55 });
     this.runCountdown();
-
-    Audio.playBgm(this.level.bgm ?? 'stage_dawn', { fadeIn: 0.6, volume: 0.55 });
   }
 
   onPointer(p) {
-    const x = Phaser.Math.Clamp(p.x, GAME.heroDragXMin, GAME.heroDragXMax);
-    this.king.setDragTargetX(x);
+    const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
+    const y = Phaser.Math.Clamp(p.y, 100, this.scale.height - 100);
+    this.king.setDragTarget(x, y);
   }
 
   runCountdown() {
-    const { width, height } = this.scale;
-    const big = this.add.text(width / 2, height / 2, '3', {
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2, '3', {
       fontFamily: FONT.display, fontSize: '120px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 6,
     }).setOrigin(0.5).setDepth(500);
@@ -117,14 +107,162 @@ export class GameScene extends Phaser.Scene {
     tick();
   }
 
+  update(time, delta) {
+    if (!this.isPlaying || this.isOver) return;
+    const dt = Math.min(0.05, delta / 1000);
+
+    this.king.update(dt, this);
+
+    // 웨이브 스폰
+    if (this.waveActive && this.spawnQueue.length > 0) {
+      this.spawnElapsed += dt;
+      while (this.spawnQueue.length > 0 && this.spawnQueue[0].t <= this.spawnElapsed) {
+        const item = this.spawnQueue.shift();
+        this.spawnEnemy(item.kind);
+      }
+    }
+
+    // 적 업데이트 + 영웅 충돌
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      e.update(dt, this.king.x, this.king.y);
+      const dx = e.x - this.king.x;
+      const dy = e.y - this.king.y;
+      const r = e.hitRadius + this.king.hitRadius;
+      if (dx*dx + dy*dy < r*r && e.touchCooldown <= 0) {
+        e.touchCooldown = 0.6;
+        this.damageKing(e.damage);
+      }
+    }
+
+    // 자동 사격
+    const target = this.findFireTarget();
+    this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w));
+
+    // 발사체
+    for (const p of this.projectiles) {
+      if (!p.alive) continue;
+      p.update(dt, this);
+      if (p.alive) this.checkProjectileVsEnemies(p);
+    }
+
+    // 패드 픽업
+    for (let i = this.pads.length - 1; i >= 0; i--) {
+      const pad = this.pads[i];
+      if (pad.consumed) { this.pads.splice(i, 1); continue; }
+      if (pad.contains(this.king.x, this.king.y)) {
+        const info = pad.consume();
+        if (info) this.applyUpgrade(info);
+        this.pads.splice(i, 1);
+      }
+    }
+
+    // 웨이브 종료 판정 (스폰 큐 비고 살아있는 적 0)
+    if (this.waveActive && this.spawnQueue.length === 0 &&
+        !this.enemies.some(e => e.alive)) {
+      this.endWave();
+    }
+  }
+
+  drawArenaBackground(width, height) {
+    const tint = this.level.groundTint ?? 0xffffff;
+    const ts = TILE_PX;
+    const scale = ts / GAME.spriteTile;
+    for (let y = 0; y < height; y += ts) {
+      for (let x = 0; x < width; x += ts) {
+        const tile = (Math.random() < 0.85) ? TILE.GRASS : TILE.GRASS_PLAIN;
+        const img = this.add.image(x, y, KEY.tilesheet, tile)
+          .setOrigin(0).setScale(scale).setDepth(0);
+        if (tint !== 0xffffff) img.setTint(tint);
+      }
+    }
+  }
+
+  // ────────────── 웨이브 ──────────────
+  startNextWave() {
+    if (this.waveActive) return;
+    this.waveIdx++;
+    const wave = this.level.waves[this.waveIdx];
+    if (!wave) return;
+    this.waveActive = true;
+    this.spawnElapsed = 0;
+    // 스폰 큐 빌드
+    this.spawnQueue = [];
+    let baseT = 0;
+    for (const [kind, count, interval] of wave.spawn) {
+      for (let i = 0; i < count; i++) {
+        this.spawnQueue.push({ t: baseT + i * interval, kind });
+      }
+      baseT += count * interval;
+    }
+    this.spawnQueue.sort((a, b) => a.t - b.t);
+
+    // 패드 즉시 등장
+    for (const padInfo of (wave.pads ?? [])) {
+      const slot = PAD_SLOTS_DATA[padInfo.slot] ?? PAD_SLOTS_DATA[0];
+      const pad = new UpgradePad(this, slot.x, slot.y, padInfo);
+      pad.setDepth(40);
+      this.pads.push(pad);
+    }
+
+    // 배너
+    Audio.levelUp();
+    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 60,
+      wave.label, {
+        fontFamily: FONT.display, fontSize: '34px', fontStyle: '900',
+        color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+      }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(4);
+    this.tweens.add({
+      targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 360, ease: 'Back.Out',
+    });
+    this.tweens.add({
+      targets: big, alpha: 0, y: big.y - 30,
+      delay: 800, duration: 320, onComplete: () => big.destroy(),
+    });
+
+    if (this.waveBtn) this.waveBtn.setVisible(false);
+    this.updateHud();
+  }
+
+  endWave() {
+    this.waveActive = false;
+    Audio.fanfare();
+    Juice.flash(this, COLORS.goldHud, 200);
+
+    if (this.waveIdx >= this.level.waves.length - 1) {
+      this.victory();
+    } else {
+      if (this.waveBtn) this.waveBtn.setVisible(true);
+      // 보너스 코인
+      this.coinsEarned += 30;
+      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+        '+30 COINS', { color: COLORS.goldHud, size: 18 });
+      this.updateHud();
+    }
+  }
+
+  spawnEnemy(kind) {
+    const e = this.enemies.find(en => !en.alive);
+    if (!e) return;
+    // 가장자리에서 등장
+    const w = this.scale.width, h = this.scale.height;
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    if (side === 0)      { x = Math.random() * w; y = -30; }
+    else if (side === 1) { x = w + 30;            y = 100 + Math.random() * (h - 200); }
+    else if (side === 2) { x = Math.random() * w; y = h + 30; }
+    else                  { x = -30;              y = 100 + Math.random() * (h - 200); }
+    if (kind === 'boss') { x = w / 2; y = -60; this.boss = e; }
+    e.reset(kind, x, y, this.hpMul);
+  }
+
   // ────────────── 사격/충돌 ──────────────
   findFireTarget() {
     let best = null;
     let bestD = this.king.weapon.range * this.king.weapon.range;
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      // 화면 안 + 영웅 위쪽 적만
-      if (e.y < -40 || e.y > this.scale.height + 40) continue;
       const dx = e.x - this.king.x;
       const dy = e.y - this.king.y;
       const d = dx * dx + dy * dy;
@@ -137,10 +275,7 @@ export class GameScene extends Phaser.Scene {
     const p = this.projectiles.find(pr => !pr.alive);
     if (!p) return;
     p.reset(x, y, { x: x + Math.cos(angle) * 100, y: y + Math.sin(angle) * 100 },
-      'archer', {
-        damage: weapon.damage,
-        speed: weapon.projectileSpeed,
-      });
+      'archer', { damage: weapon.damage, speed: weapon.projectileSpeed });
     Audio.tap();
   }
 
@@ -164,19 +299,56 @@ export class GameScene extends Phaser.Scene {
     this.score += e.scoreVal;
     this.kills++;
     this.coinsEarned += e.bounty;
-    Juice.popText(this, e.x, e.y - 18, `+${e.bounty}`, {
-      color: 0xf4c542, size: 12, rise: 26, duration: 400,
+    Juice.popText(this, e.x, e.y - 14, `+${e.bounty}`, {
+      color: 0xf4c542, size: 12, rise: 24, duration: 380,
     });
+    if (e === this.boss) this.boss = null;
     this.updateHud();
   }
 
   damageKing(n) {
     if (!this.king.takeDamage(n)) return;
-    Juice.flash(this, 0xc8302d, 200);
+    Juice.flash(this, COLORS.capeRed, 200);
     Juice.shake(this, 0.014, 200);
     Audio.miss();
     this.updateHud();
     if (this.king.hp <= 0) this.gameOver();
+  }
+
+  applyUpgrade(info) {
+    const cfg = UPGRADE_TYPES[info.type];
+    if (!cfg) return;
+    cfg.apply(this.king.weapon, info.value, this.king);
+    Audio.purchase();
+    Juice.flash(this, cfg.color, 200);
+    Juice.ring(this, this.king.x, this.king.y,
+      { color: cfg.color, radius: 130, duration: 460, count: 2 });
+    Juice.popText(this, this.king.x, this.king.y - 40, info.label ?? cfg.glyph,
+      { color: cfg.color, size: 22, rise: 50, duration: 700 });
+  }
+
+  drawArenaBorders(width, height) {
+    // 가장자리에 장식 (트리/락)
+    const types = [TILE.TREE, TILE.TREE_PINE, TILE.BUSH, TILE.ROCK_SMALL, TILE.ROCK_LARGE];
+    const placeRow = (y, count) => {
+      for (let i = 0; i < count; i++) {
+        const x = 20 + (i / count) * (width - 40) + (Math.random() - 0.5) * 18;
+        const t = types[Math.floor(Math.random() * types.length)];
+        this.add.image(x, y, KEY.tilesheet, t)
+          .setScale(TILE_PX / GAME.spriteTile * (0.85 + Math.random() * 0.4))
+          .setDepth(20);
+      }
+    };
+    placeRow(70, 8);
+    placeRow(height - 60, 7);
+    for (let i = 0; i < 6; i++) {
+      const y = 130 + i * (height - 230) / 6 + (Math.random() - 0.5) * 24;
+      const t = types[Math.floor(Math.random() * types.length)];
+      this.add.image(16 + Math.random() * 8, y, KEY.tilesheet, t)
+        .setScale(TILE_PX / GAME.spriteTile * (0.85 + Math.random() * 0.4)).setDepth(20);
+      this.add.image(width - 16 - Math.random() * 8, y, KEY.tilesheet, t)
+        .setScale(TILE_PX / GAME.spriteTile * (0.85 + Math.random() * 0.4)).setDepth(20);
+    }
   }
 
   // ────────────── HUD ──────────────
@@ -185,29 +357,26 @@ export class GameScene extends Phaser.Scene {
     const bar = this.add.graphics().setDepth(100);
     bar.fillStyle(0x000000, 0.55);
     bar.fillRect(0, 0, width, 50);
-    bar.fillStyle(0xf4c542, 0.6);
+    bar.fillStyle(COLORS.goldHud, 0.6);
     bar.fillRect(0, 48, width, 2);
 
-    // 좌측 — SCORE
-    this.add.text(18, 8, 'SCORE', {
-      fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-      color: '#d9c897',
-    }).setDepth(101).setLetterSpacing?.(2);
-    this.hudScore = this.add.text(18, 22, '0', {
+    this.add.image(20, 25, KEY.tilesheet, TILE.COIN_GOLD)
+      .setScale(0.45).setDepth(101);
+    this.hudCoins = this.add.text(38, 16, '0', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
-    }).setDepth(101);
+    }).setOrigin(0, 0).setDepth(101);
 
-    // 중앙 — 레벨 이름 + 진행도 바
     this.add.text(width / 2, 8, this.level.name, {
       fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
       color: '#d9c897',
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(3);
-    this.progBg = this.add.graphics().setDepth(101);
-    this.progFill = this.add.graphics().setDepth(102);
+    this.hudWave = this.add.text(width / 2, 22, 'PRESS START', {
+      fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
+      color: '#f0e6d0', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(2);
 
-    // 우측 — HP 하트
-    this.hudHp = this.add.text(width - 18, 22, '♥ ♥ ♥', {
+    this.hudHp = this.add.text(width - 20, 16, '♥ 5', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
       color: '#ff6b6b', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(101);
@@ -216,24 +385,58 @@ export class GameScene extends Phaser.Scene {
   }
 
   updateHud() {
-    if (!this.hudScore) return;
-    this.hudScore.setText(this.score.toLocaleString());
-    // HP 하트
-    const hearts = '♥ '.repeat(this.king.hp).trim() || '·';
-    this.hudHp.setText(hearts);
-    // 진행도 바
-    const w = 120, h = 8;
-    const px = this.scale.width / 2 - w / 2;
-    const py = 28;
-    this.progBg.clear();
-    this.progBg.fillStyle(0x000000, 0.6);
-    this.progBg.fillRoundedRect(px - 1, py - 1, w + 2, h + 2, 4);
-    this.progBg.fillStyle(0x3e2e1e, 1);
-    this.progBg.fillRoundedRect(px, py, w, h, 3);
-    this.progFill.clear();
-    const ratio = Phaser.Math.Clamp(this.kingWorldY / this.level.length, 0, 1);
-    this.progFill.fillStyle(0xf4c542, 1);
-    this.progFill.fillRoundedRect(px, py, w * ratio, h, 3);
+    if (!this.hudCoins) return;
+    this.hudCoins.setText(String(this.coinsEarned));
+    this.hudHp.setText('♥ ' + this.king.hp);
+    if (this.waveActive) {
+      this.hudWave.setText(this.level.waves[this.waveIdx]?.label ?? '');
+      this.hudWave.setColor('#f4c542');
+    } else if (this.waveIdx >= this.level.waves.length - 1) {
+      this.hudWave.setText('CLEARED');
+    } else if (this.waveIdx >= 0) {
+      this.hudWave.setText('CLEAR · NEXT?');
+      this.hudWave.setColor('#9ad0a0');
+    } else {
+      this.hudWave.setText('PRESS START');
+    }
+  }
+
+  makeWaveButton() {
+    const w = 180, h = 44;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height - 36;
+    const c = this.add.container(cx, cy).setDepth(120);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.5);
+    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
+    bg.fillStyle(COLORS.capeRed, 1);
+    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.fillStyle(COLORS.capeRedDk, 1);
+    bg.fillRoundedRect(-w / 2, h / 2 - 5, w, 5, 6);
+    bg.lineStyle(2, COLORS.woodDark, 1);
+    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.lineStyle(1, COLORS.goldHud, 0.9);
+    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
+    c.add(bg);
+    const t = this.add.text(0, 0, '⚔ START WAVE', {
+      fontFamily: FONT.display, fontSize: '17px', fontStyle: '900',
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setLetterSpacing?.(3);
+    c.add(t);
+    c.setSize(w, h);
+    c.setInteractive({ useHandCursor: true });
+    c.on('pointerover', () => this.tweens.add({ targets: c, scale: 1.06, duration: 140 }));
+    c.on('pointerout',  () => this.tweens.add({ targets: c, scale: 1, duration: 140 }));
+    c.on('pointerdown', (p, lx, ly, evt) => {
+      evt.stopPropagation?.();
+      Audio.purchase();
+      this.startNextWave();
+    });
+    this.waveBtn = c;
+    this.tweens.add({
+      targets: c, scale: { from: 1, to: 1.04 },
+      duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
   }
 
   // ────────────── 승/패 ──────────────
@@ -242,7 +445,7 @@ export class GameScene extends Phaser.Scene {
     this.isOver = true;
     Audio.fanfare();
     Juice.slowmo(this, 0.4, 800);
-    Juice.flash(this, 0xf4c542, 380);
+    Juice.flash(this, COLORS.goldHud, 380);
     const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'VICTORY', {
       fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 6,
@@ -259,7 +462,7 @@ export class GameScene extends Phaser.Scene {
     this.isOver = true;
     Audio.bomb();
     Juice.shake(this, 0.03, 500);
-    Juice.flash(this, 0xc8302d, 480);
+    Juice.flash(this, COLORS.capeRed, 480);
     const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'DEFEATED', {
       fontFamily: FONT.display, fontSize: '46px', fontStyle: '900',
       color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 6,
@@ -294,206 +497,5 @@ export class GameScene extends Phaser.Scene {
         coinsEarned: this.coinsEarned, gemsEarned: bonusGems,
       });
     });
-  }
-
-  // worldY → 화면 Y 변환.
-  // worldY가 영웅보다 크면(앞쪽=레벨 후반) 화면 위쪽(작은 Y)에 표시.
-  worldToScreen(worldY) {
-    return GAME.heroScreenY - (worldY - this.kingWorldY);
-  }
-
-  // ────────────── 배경 ──────────────
-  buildBackground(width, height) {
-    // 28 rows × cols 잔디 타일 — wrap-around treadmill (컨테이너 Y만 modulo로 이동)
-    this.bgContainer = this.add.container(0, 0);
-    this.bgContainer.setDepth(-30);
-    const cols = Math.ceil(width / TILE_PX);
-    const rows = Math.ceil(height / TILE_PX) + 4;
-    const tint = this.level.groundTint ?? 0xffffff;
-    this.bgRowsCount = rows;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const tile = (Math.random() < 0.85) ? TILE.GRASS : TILE.GRASS_PLAIN;
-        const img = this.add.image(c * TILE_PX, r * TILE_PX - TILE_PX * 2,
-          KEY.tilesheet, tile).setOrigin(0).setScale(TILE_PX / GAME.spriteTile);
-        if (tint !== 0xffffff) img.setTint(tint);
-        this.bgContainer.add(img);
-      }
-    }
-  }
-
-  scrollBackground() {
-    // king worldY가 증가하면 배경이 위로 스크롤되어야 함 (적이 위에서 내려오는 효과)
-    // bgContainer를 음의 방향으로 이동 modulo TILE_PX
-    const offset = this.kingWorldY % TILE_PX;
-    this.bgContainer.y = -offset;
-  }
-
-  buildSideDecorations() {
-    // 좌우 가장자리에 장식을 무작위 worldY에 배치
-    this.sideDeco = [];
-    const len = this.level.length;
-    const types = [TILE.TREE, TILE.TREE_PINE, TILE.BUSH, TILE.ROCK_SMALL, TILE.ROCK_LARGE];
-    let y = 100;
-    while (y < len + 200) {
-      const sideLeft = Math.random() < 0.5;
-      const x = sideLeft ? 12 + Math.random() * 24 : (this.scale.width - 12 - Math.random() * 24);
-      const type = types[Math.floor(Math.random() * types.length)];
-      const img = this.add.image(x, this.worldToScreen(y), KEY.tilesheet, type)
-        .setScale(TILE_PX / GAME.spriteTile * (0.9 + Math.random() * 0.4))
-        .setDepth(-25);
-      this.sideDeco.push({ obj: img, worldY: y });
-      y += 80 + Math.random() * 140;
-    }
-  }
-
-  // ────────────── 이벤트 ──────────────
-  handleEvent(ev) {
-    if (ev.kind === 'spawn') {
-      this.spawnEnemyGroup(ev.enemies);
-    } else if (ev.kind === 'boss') {
-      this.spawnBoss(ev.enemyKind ?? 'boss');
-    }
-    // 'gate' 이벤트는 create()에서 사전 처리됨
-  }
-
-  spawnEnemyGroup(groups) {
-    // groups: [['soldier', 4], ['scout', 2]]
-    let delay = 0;
-    for (const [kind, count] of groups) {
-      for (let i = 0; i < count; i++) {
-        this.time.delayedCall(delay * 1000, () => {
-          const e = this.enemies.find(en => !en.alive);
-          if (!e) return;
-          // 화면 위쪽(영웅 앞)에서 등장 — worldY는 영웅보다 큼
-          const x = 60 + Math.random() * (this.scale.width - 120);
-          const worldY = this.kingWorldY + 600 + Math.random() * 80;
-          e.reset(kind, x, worldY, this.hpMul);
-        });
-        delay += 0.18;
-      }
-    }
-  }
-
-  spawnGate(worldY, left, right) {
-    const g = new Gate(this, worldY, left, right);
-    g.x = this.scale.width / 2;
-    g.y = this.worldToScreen(worldY);
-    this.gates.push(g);
-  }
-
-  spawnBoss(kind) {
-    const e = this.enemies.find(en => !en.alive);
-    if (!e) return;
-    const x = this.scale.width / 2;
-    const worldY = this.kingWorldY + 600;
-    e.reset(kind, x, worldY, this.hpMul);
-    this.boss = e;
-    Audio.fanfare();
-    Juice.flash(this, 0xc8302d, 360);
-    Juice.shake(this, 0.022, 360);
-    const t = this.add.text(this.scale.width / 2, this.scale.height / 2, 'BOSS', {
-      fontFamily: FONT.display, fontSize: '88px', fontStyle: '900',
-      color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 7,
-    }).setOrigin(0.5).setDepth(700).setLetterSpacing?.(8);
-    this.tweens.add({
-      targets: t, scale: { from: 1.8, to: 1 }, alpha: { from: 0, to: 1 },
-      duration: 360, ease: 'Back.Out',
-    });
-    this.tweens.add({
-      targets: t, alpha: 0, y: t.y - 30,
-      delay: 900, duration: 360, onComplete: () => t.destroy(),
-    });
-  }
-
-  applyUpgrade(info) {
-    const cfg = UPGRADE_TYPES[info.type];
-    if (!cfg) return;
-    cfg.apply(this.king.weapon, info.value, this.king);
-    Audio.purchase();
-    Juice.flash(this, cfg.color, 200);
-    Juice.ring(this, this.king.x, this.king.y,
-      { color: cfg.color, radius: 130, duration: 460, count: 2 });
-    Juice.popText(this, this.king.x, this.king.y - 40, info.label ?? cfg.glyph,
-      { color: cfg.color, size: 22, rise: 50, duration: 700 });
-  }
-
-  update(time, delta) {
-    if (!this.isPlaying || this.isOver) return;
-    const dt = Math.min(0.05, delta / 1000);
-
-    // 영웅 worldY 자동 전진 (레벨 끝까지)
-    if (this.kingWorldY < this.level.length) {
-      this.kingWorldY += GAME.scrollSpeed * dt;
-    }
-
-    // 영웅 이동/쿨다운
-    this.king.update(dt, this);
-
-    // 배경 스크롤
-    this.scrollBackground();
-
-    // 사이드 장식 위치 갱신
-    for (const d of this.sideDeco) {
-      d.obj.y = this.worldToScreen(d.worldY);
-    }
-
-    // 이벤트 트리거 (worldY 도달 시)
-    while (this.eventQueue.length > 0 && this.eventQueue[0].y <= this.kingWorldY) {
-      const ev = this.eventQueue.shift();
-      this.handleEvent(ev);
-    }
-
-    // 적 업데이트 + 영웅 충돌
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      e.update(dt, this.king.x, this.kingWorldY);
-      e.y = this.worldToScreen(e.worldY);
-      const dx = e.x - this.king.x;
-      const dy = e.y - this.king.y;
-      const r = e.hitRadius + this.king.hitRadius;
-      if (dx*dx + dy*dy < r*r && e.touchCooldown <= 0) {
-        e.touchCooldown = 0.6;
-        this.damageKing(e.damage);
-        e.takeDamage(99999);   // 접촉한 적은 사라짐 (BOSS 제외)
-      }
-      // 화면 밖 (아래)으로 빠진 적은 비활성
-      if (e.y > this.scale.height + 80) e.alive = false, e.setVisible(false).setActive(false);
-    }
-
-    // 자동 사격
-    const target = this.findFireTarget();
-    this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w));
-
-    // 발사체
-    for (const p of this.projectiles) {
-      if (!p.alive) continue;
-      p.update(dt, this);
-      if (p.alive) this.checkProjectileVsEnemies(p);
-    }
-
-    // 게이트
-    for (let i = this.gates.length - 1; i >= 0; i--) {
-      const g = this.gates[i];
-      if (g.consumed) { this.gates.splice(i, 1); continue; }
-      g.y = this.worldToScreen(g.worldY);
-      // 영웅이 게이트 worldY를 지나갔으면 통과
-      if (this.kingWorldY >= g.worldY) {
-        const side = g.whichSide(this.king.x);
-        const chosen = g.consume(side);
-        if (chosen) this.applyUpgrade(chosen);
-      }
-    }
-
-    // 보스 처치 시 victory
-    if (this.boss && !this.boss.alive) {
-      this.boss = null;
-      this.victory();
-    }
-
-    // 레벨 끝 + 보스 없으면 빠져나감
-    if (this.kingWorldY >= this.level.length && !this.boss && this.eventQueue.length === 0) {
-      // 끝까지 도달했지만 보스 처치된 후만 victory
-    }
   }
 }
