@@ -79,10 +79,18 @@ export class GameScene extends Phaser.Scene {
     this.king.setPosition(tp.x, tp.y + 60);
     this.king.setDepth(80);
 
-    // 6) 타워 슬롯 (TowerSlot 엔티티)
+    // 6) 타워 슬롯 (TowerSlot 엔티티) — 왕좌 가까운 순으로 정렬해 unlock 순서 결정
     this.slots = [];
     this.towers = [];
-    (this.level.towerSlots ?? []).forEach((s, i) => {
+    const throneTp = tilePxCenter(this.level.throne.col, this.level.throne.row);
+    const slotData = (this.level.towerSlots ?? []).slice().sort((a, b) => {
+      const ap = tilePxCenter(a[0], a[1]);
+      const bp = tilePxCenter(b[0], b[1]);
+      const da = (ap.x - throneTp.x) ** 2 + (ap.y - throneTp.y) ** 2;
+      const db = (bp.x - throneTp.x) ** 2 + (bp.y - throneTp.y) ** 2;
+      return da - db;
+    });
+    slotData.forEach((s, i) => {
       const [c, r] = s;
       const sp = tilePxCenter(c, r);
       const kind = SLOT_TOWER_KINDS[i % SLOT_TOWER_KINDS.length];
