@@ -227,7 +227,7 @@ export class MenuScene extends Phaser.Scene {
     c.add(bestT);
   }
 
-  // 미니 프리뷰: 세로 진행 + 이벤트 마커.
+  // 미니 프리뷰: 5 웨이브 + 패드 마커 (아레나 형식).
   drawMiniPreview(parent, cx, cy, level) {
     const w = 240, h = 60;
     const bg = this.add.graphics();
@@ -237,39 +237,31 @@ export class MenuScene extends Phaser.Scene {
     bg.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, 4);
     bg.lineStyle(1.5, COLORS.woodDark, 0.7);
     bg.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, 4);
-
-    // 가운데 길 (가로형으로 축소)
-    bg.lineStyle(5, COLORS.woodBrown, 1);
-    bg.beginPath();
-    bg.moveTo(cx - w / 2 + 6, cy);
-    bg.lineTo(cx + w / 2 - 6, cy);
-    bg.strokePath();
-    bg.lineStyle(2, 0xb87a4a, 0.7);
-    bg.beginPath();
-    bg.moveTo(cx - w / 2 + 6, cy);
-    bg.lineTo(cx + w / 2 - 6, cy);
-    bg.strokePath();
     parent.add(bg);
 
-    // 이벤트 마커 (gate=세로 막대, spawn=빨간 점, boss=큰 빨간 점)
-    const len = level.length;
-    for (const ev of level.events) {
-      const t = ev.y / len;
+    // 웨이브 5개를 가로로 배치
+    const waves = level.waves ?? [];
+    waves.forEach((wave, i) => {
+      const t = (i + 0.5) / waves.length;
       const px = cx - w / 2 + 6 + (w - 12) * t;
-      if (ev.kind === 'gate') {
-        const m = this.add.graphics();
-        m.fillStyle(COLORS.goldHud, 0.95);
-        m.fillRect(px - 1, cy - 12, 2, 24);
-        parent.add(m);
-      } else if (ev.kind === 'spawn') {
-        const m = this.add.circle(px, cy, 2, 0xc8302d, 0.9);
-        parent.add(m);
-      } else if (ev.kind === 'boss') {
-        const m = this.add.circle(px, cy, 5, 0xc8302d, 0.95);
+      const isBoss = (wave.label && wave.label.toLowerCase().includes('boss')) ||
+                     (wave.spawn && wave.spawn.some(([k]) => k === 'boss'));
+      // 웨이브 점 (보스는 큰 빨간 + 골드 외곽)
+      if (isBoss) {
+        const m = this.add.circle(px, cy + 4, 5, 0xc8302d, 0.95);
         m.setStrokeStyle(2, COLORS.goldHud, 1);
         parent.add(m);
+      } else {
+        const m = this.add.circle(px, cy + 4, 3, 0xc8302d, 0.85);
+        parent.add(m);
       }
-    }
+      // 패드 마커 (해당 웨이브에 패드 있으면 위쪽에 골드 점)
+      if (wave.pads && wave.pads.length > 0) {
+        const pm = this.add.circle(px, cy - 10, 3, COLORS.goldHud, 1);
+        pm.setStrokeStyle(1, COLORS.woodDark, 1);
+        parent.add(pm);
+      }
+    });
   }
 
   makeStartButton(cx, cy) {
