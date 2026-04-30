@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage, getDailyTarget,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -61,8 +61,10 @@ export class GameScene extends Phaser.Scene {
     this.elapsed = 0;
     this.spawnTimer = 0;
     this.isPlaying = false;
-    this.reachedRanks = new Set();
     this.reachedMilestones = new Set();
+    this._lastDramaSec = -1;
+    this._perfectStreak = 0;
+    this._comboBeforeReset = 0;
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
@@ -112,6 +114,9 @@ export class GameScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(201).setLetterSpacing(2);
 
+    // PERFECT 스트릭 카운터 (TAP ZONE 아래 고정)
+    this._hudPerfectReady = false; // judgmentY는 아직 세팅 전이므로 지연 초기화
+
     // 하단 시간 progress bar
     this.timeBarBg = this.add.graphics().setDepth(200);
     this.timeBar = this.add.graphics().setDepth(201);
@@ -126,15 +131,27 @@ export class GameScene extends Phaser.Scene {
     this.borderFx = this.add.graphics().setDepth(500);
     this.borderAlpha = 0;
 
+    // 마지막 5초 카운트다운 빨간 비네트 (엣지 밴드)
+    this._warnVignette = this.add.graphics().setDepth(490).setAlpha(0);
+
     // TAP ZONE (판정 라인) — 배경 레이어 바로 위
     this.judgmentY = Math.round(height * JUDGMENT.lineYRatio);
     this.drawJudgmentZone();
+
+    // PERFECT 스트릭 카운터 — judgmentY가 확정된 후 배치
+    this.hudPerfect = this.add.text(width / 2, this.judgmentY + 72, '', {
+      fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
+      color: '#ffd24a',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(202).setAlpha(0).setLetterSpacing(4);
 
     // LINK 쌍의 연결선용 그래픽 (오브 뒤, 판정선 위)
     this.linkLines = this.add.graphics().setDepth(-4);
 
     // 오브 낙하 놓침(fall-through) → MISS 처리
     this.events.on('orbMissed', (orb) => this.onOrbMiss(orb));
+    // 폭탄 회피 성공 → 소소한 보상
+    this.events.on('bombDodged', (orb) => this.onBombDodge(orb));
 
     // 멀티터치 (LINK 동시 탭 지원) — 포인터 3개까지
     this.input.addPointer(3);
@@ -405,6 +422,18 @@ export class GameScene extends Phaser.Scene {
     this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
   }
 
+  onBombDodge(orb) {
+    if (!this.isPlaying) return;
+    const bonus = 25;
+    const prevScore = this.score;
+    this.score += bonus;
+    Juice.countUp(this, this.hudScore, prevScore, this.score, 200);
+    Juice.popText(this, orb.x, orb.y - 20, 'DODGE! +25', {
+      color: COLORS.cyan, size: 20,
+    });
+    Audio.dodge?.();
+  }
+
   drawComboBar() {
     const { width, height } = this.scale;
     const barW = 10, barH = 180;
@@ -476,8 +505,31 @@ export class GameScene extends Phaser.Scene {
       // 마지막 5초 긴박감
       if (sec <= 5 && sec > 0) {
         this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
+        // 매 정수 초 전환 시 한 번씩만 카메라·오디오 연출
+        if (sec !== this._lastDramaSec) {
+          this._lastDramaSec = sec;
+          Juice.punch(this, this.hudTime, 1.6, 200);
+          Juice.shake(this, sec <= 2 ? 0.010 : 0.005, 140);
+          Audio.countdown?.();
+          if (sec <= 2) Juice.flash(this, COLORS.red, 120);
+          // 엣지 비네트 플래시
+          const vigAlpha = sec <= 2 ? 0.36 : sec <= 3 ? 0.22 : 0.12;
+          this._warnVignette.clear();
+          this._warnVignette.fillStyle(0xff1a3a, 1);
+          this._warnVignette.fillRect(0, 0, width, 36);
+          this._warnVignette.fillRect(0, height - 36, width, 36);
+          this._warnVignette.fillRect(0, 0, 28, height);
+          this._warnVignette.fillRect(width - 28, 0, 28, height);
+          this._warnVignette.setAlpha(vigAlpha);
+          this.tweens.killTweensOf(this._warnVignette);
+          this.tweens.add({
+            targets: this._warnVignette, alpha: 0,
+            duration: sec <= 2 ? 380 : 560, ease: 'Cubic.Out',
+          });
+        }
       } else {
         this.hudTime.setColor('#e8ecf5');
+        this._lastDramaSec = -1;
       }
 
       // 레벨 진행 체크
@@ -564,11 +616,13 @@ export class GameScene extends Phaser.Scene {
     const bombProb = this.currentLevel.bomb * this.stage.bombMul;
     const rareProb = PROB.rare * this.stage.rareMul;
 
+    const ghostProb = (this.currentLevel.ghost ?? 0);
     const roll = Math.random();
     let kind;
-    if (roll < rareProb) kind = ORB_KIND.RARE;
-    else if (roll < rareProb + bombProb) kind = ORB_KIND.BOMB;
-    else kind = ORB_KIND.NORMAL;
+    if (roll < rareProb)                             kind = ORB_KIND.RARE;
+    else if (roll < rareProb + bombProb)             kind = ORB_KIND.BOMB;
+    else if (roll < rareProb + bombProb + ghostProb) kind = ORB_KIND.GHOST;
+    else                                             kind = ORB_KIND.NORMAL;
 
     // LINK 쌍: LVL2 이후 일반 오브에서 스테이지별 확률로 대체. 항상 좌/우 분리
     // → 양엄지를 각각 한 손씩 쓰도록 유도한다.
@@ -622,9 +676,46 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === ORB_KIND.GHOST) {
+      Audio.bomb();
+      Juice.flash(this, 0xaaaacc, 140);
+      Juice.burst(this, obj.x, obj.y, { count: 10, color: 0xaaaacc, speed: 200 });
+      Juice.popText(this, obj.x, obj.y - 20, 'GHOST!', {
+        color: 0xaaaacc, size: 28,
+      });
+      this.resetCombo();
+      obj.pop();
+      Analytics.track('tap_ghost');
+      return;
+    }
+
     // 타이밍 판정 (TAP ZONE 기준)
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
+
+    // PERFECT 스트릭 추적
+    if (judge.tier === 'PERFECT') {
+      this._perfectStreak++;
+      this.hudPerfect.setText(`✦ PERFECT  ×${this._perfectStreak}`);
+      this.tweens.killTweensOf(this.hudPerfect);
+      this.tweens.add({
+        targets: this.hudPerfect, alpha: 1, scale: { from: 1.3, to: 1 },
+        duration: 160, ease: 'Back.Out',
+      });
+      if (this._perfectStreak === 3 || this._perfectStreak === 5 || this._perfectStreak % 10 === 0) {
+        Juice.flash(this, COLORS.gold, 110);
+        Juice.ring(this, width / 2, this.judgmentY, {
+          color: COLORS.gold, radius: width * 0.55, count: 2, duration: 480,
+        });
+        Audio.perfectStreak?.();
+      }
+    } else if (this._perfectStreak > 0) {
+      this._perfectStreak = 0;
+      this.tweens.add({
+        targets: this.hudPerfect, alpha: 0, duration: 280, ease: 'Cubic.Out',
+        onComplete: () => this.hudPerfect.setText(''),
+      });
+    }
 
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
@@ -684,11 +775,17 @@ export class GameScene extends Phaser.Scene {
       Juice.punch(this, this.hudCombo, 1.3, 180);
     }
 
-    // 콤보 등급 배너
+    // 콤보 등급 배너 — 정확히 임계값 도달 시 표시. 리셋 후 재도달도 허용.
+    // 이전 콤보가 해당 랭크 이상이었다면 COMEBACK! 먼저 표시.
     for (const rank of COMBO_RANKS) {
-      if (this.combo >= rank.at && !this.reachedRanks.has(rank.at)) {
-        this.reachedRanks.add(rank.at);
-        this.showRankBanner(rank);
+      if (this.combo === rank.at) {
+        if (this._comboBeforeReset >= rank.at) {
+          this._comboBeforeReset = 0;
+          this.showComebackBanner(rank);
+          this.time.delayedCall(420, () => this.showRankBanner(rank));
+        } else {
+          this.showRankBanner(rank);
+        }
       }
     }
 
@@ -700,10 +797,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 네온 테두리
+    // 네온 테두리 + FEVER MODE (콤보 20+)
     if (this.combo >= 10) {
       this.borderAlpha = 1;
       this.drawBorder();
+    }
+    if (this.combo === 20) {
+      // FEVER MODE 진입 — 한 번만 트리거
+      this.enterFeverMode();
     }
 
     // 콤보 바 업데이트
@@ -765,6 +866,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  showComebackBanner(rank) {
+    const { width, height } = this.scale;
+    const t = this.add.text(-120, height * 0.52, '◀  COMEBACK!', {
+      fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
+      color: '#ff8c00', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0, 0.5).setDepth(979).setAlpha(0);
+
+    this.tweens.add({
+      targets: t, x: width / 2 - 100, alpha: 1,
+      duration: 230, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, x: width + 80, alpha: 0,
+          duration: 290, delay: 180, ease: 'Cubic.In',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+    Juice.burst(this, width * 0.15, height * 0.52, { count: 10, color: 0xff8c00, speed: 220 });
+    Audio.rankup?.();
+  }
+
   showMilestone(score) {
     const { width, height } = this.scale;
     Audio.milestone();
@@ -790,12 +913,56 @@ export class GameScene extends Phaser.Scene {
     Juice.ring(this, width / 2, height * 0.3, { color: COLORS.gold, radius: 260, count: 3 });
   }
 
+  enterFeverMode() {
+    const { width, height } = this.scale;
+    Audio.fever?.();
+    Juice.flash(this, COLORS.red, 260);
+    Juice.shake(this, 0.018, 300);
+
+    const t = this.add.text(width / 2, height * 0.5, '🔥 FEVER! 🔥', {
+      fontFamily: FONT.display, fontSize: '58px', fontStyle: '900',
+      color: '#ff4d6d', stroke: '#000', strokeThickness: 8,
+    }).setOrigin(0.5).setDepth(985).setScale(0.4).setAlpha(0).setAngle(4);
+
+    this.tweens.add({
+      targets: t, scale: 1.1, alpha: 1, angle: 0,
+      duration: 240, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: t, alpha: 0, scale: 1.5, y: t.y - 40,
+          duration: 520, delay: 380, ease: 'Cubic.In',
+          onComplete: () => t.destroy(),
+        });
+      },
+    });
+
+    for (let i = 0; i < 4; i++) {
+      this.time.delayedCall(i * 70, () => {
+        Juice.burst(this, width * 0.15, height * 0.5, { count: 12, color: COLORS.red, speed: 360 });
+        Juice.burst(this, width * 0.85, height * 0.5, { count: 12, color: COLORS.red, speed: 360 });
+      });
+    }
+    Juice.ring(this, width / 2, height / 2, { color: COLORS.red, radius: 320, count: 3, duration: 600 });
+
+    // 배경 맥동을 최고 강도로 강제 설정
+    this.bgIntensity = 1;
+    this.drawBgPulse();
+  }
+
   resetCombo() {
+    this._comboBeforeReset = this.combo;
     this.combo = 0;
     this.hudCombo.setText('');
     this.borderAlpha = 0;
     this.drawBorder();
     this.drawComboBar();
+    if (this._perfectStreak > 0) {
+      this._perfectStreak = 0;
+      this.tweens.add({
+        targets: this.hudPerfect, alpha: 0, duration: 200,
+        onComplete: () => this.hudPerfect.setText(''),
+      });
+    }
   }
 
   drawBgPulse() {
@@ -823,7 +990,7 @@ export class GameScene extends Phaser.Scene {
     const { width, height } = this.scale;
     const alpha = Math.min(1, this.borderAlpha);
     const color = this.combo >= 25 ? COLORS.red :
-                  this.combo >= 15 ? COLORS.magenta : COLORS.magenta;
+                  this.combo >= 15 ? COLORS.magenta : COLORS.cyan;
     this.borderFx.lineStyle(6, color, alpha);
     this.borderFx.strokeRect(3, 3, width - 6, height - 6);
     this.borderFx.lineStyle(16, color, alpha * 0.25);
@@ -872,6 +1039,14 @@ export class GameScene extends Phaser.Scene {
     Storage.addCoins(coins);
     Storage.addGems(this.gemsEarned);
     const isBest = Storage.setBestScore('tap-rush', this.score);
+    const isStageBest = Storage.setStageBest(this.stage.id, this.score);
+
+    // 데일리 챌린지 체크
+    const today = new Date().toISOString().slice(0, 10);
+    const dailyTarget = getDailyTarget(this.stage.id, today);
+    const dailyCleared = this.score >= dailyTarget
+      ? Storage.claimDailyChallenge(this.stage.id, today)
+      : false;
 
     Analytics.track('session_end', {
       score: this.score, bestCombo: this.bestCombo,
@@ -886,6 +1061,9 @@ export class GameScene extends Phaser.Scene {
         coins,
         gems: this.gemsEarned,
         isBest,
+        isStageBest,
+        dailyCleared,
+        dailyTarget,
         stageId: this.stage.id,
       });
     });

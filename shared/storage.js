@@ -11,6 +11,8 @@ const DEFAULT_PROFILE = {
   ownedSkins: ['default'],
   equippedSkin: 'default',
   bestScores: {},          // { 'tap-rush': 12345, ... }
+  stageBests: {},          // { 'dawn': 12345, 'pulse': 8000, ... }
+  dailyChallenges: {},     // { 'dawn_2026-04-30': true, ... }
   achievements: [],        // ['first_combo_10', ...]
   lastLoginISO: null,
   firstPurchaseDone: false,
@@ -71,6 +73,29 @@ export const Storage = {
       return true;
     }
     return false;
+  },
+
+  setStageBest(stageId, score) {
+    const p = this.load();
+    if (!p.stageBests) p.stageBests = {};
+    const prev = p.stageBests[stageId] || 0;
+    if (score > prev) {
+      p.stageBests[stageId] = score;
+      this.save(p);
+      return true;
+    }
+    return false;
+  },
+
+  claimDailyChallenge(stageId, dateISO) {
+    const key = `${stageId}_${dateISO}`;
+    const p = this.load();
+    if (!p.dailyChallenges) p.dailyChallenges = {};
+    if (p.dailyChallenges[key]) return false;
+    p.dailyChallenges[key] = true;
+    p.gems = Math.max(0, (p.gems || 0) + 10);
+    this.save(p);
+    return true;
   },
 
   ownSkin(skinId) {

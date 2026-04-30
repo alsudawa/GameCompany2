@@ -4,7 +4,7 @@ import { Storage } from '../../../../shared/storage.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { UI, FONT } from '../../../../shared/ui.js';
-import { COLORS, STAGES } from '../config.js';
+import { COLORS, STAGES, getDailyTarget } from '../config.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super('MenuScene'); }
@@ -167,6 +167,14 @@ export class MenuScene extends Phaser.Scene {
         fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
         color: '#8a90b0',
       }).setOrigin(0, 0.5).setLetterSpacing(2),
+      stageBest: this.add.text(cx + w / 2 - 14, cy - h / 2 + 16, '', {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: '#6b708f',
+      }).setOrigin(1, 0).setLetterSpacing(2),
+      daily: this.add.text(cx + 6, cy + h / 2 - 18, '', {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: '#ffd24a',
+      }).setOrigin(0, 0.5).setLetterSpacing(2),
       dots: this.add.graphics(),
     };
     // 스테이지 카드는 좌우 네비/START와 겹치지 않도록 컴팩트하게.
@@ -210,6 +218,16 @@ export class MenuScene extends Phaser.Scene {
     c.label.setText(`STAGE ${stage.label}`).setColor('#6b708f');
     c.name.setText(stage.name).setColor(hex);
     c.tagline.setText(stage.tagline);
+    // 스테이지별 최고 점수
+    const profile = Storage.load();
+    const stageBestVal = (profile.stageBests ?? {})[stage.id] || 0;
+    c.stageBest.setText(stageBestVal > 0 ? `BEST ${stageBestVal.toLocaleString()}` : '').setColor('#6b708f');
+    // 데일리 챌린지
+    const today = new Date().toISOString().slice(0, 10);
+    const dailyTarget = getDailyTarget(stage.id, today);
+    const dailyClaimed = (profile.dailyChallenges ?? {})[`${stage.id}_${today}`];
+    c.daily.setText(dailyClaimed ? '✓ DAILY DONE  +10💎' : `◆ DAILY: ${dailyTarget.toLocaleString()}`)
+      .setColor(dailyClaimed ? '#6b708f' : '#ffd24a');
     // 하단 5개 도트 (현재 위치 인디케이터)
     c.dots.clear();
     const dotSpace = 12;

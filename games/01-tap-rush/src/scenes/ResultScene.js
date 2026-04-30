@@ -18,6 +18,8 @@ export class ResultScene extends Phaser.Scene {
   init(data) {
     this.data_ = data || { score: 0, bestCombo: 0, coins: 0, gems: 0, isBest: false };
     this.stageId = data?.stageId ?? null;
+    this.dailyCleared = data?.dailyCleared ?? false;
+    this.isStageBest = data?.isStageBest ?? false;
   }
 
   create() {
@@ -56,8 +58,8 @@ export class ResultScene extends Phaser.Scene {
     sep.lineStyle(1, 0x00e5ff, 0.5);
     sep.strokeLineShape(new Phaser.Geom.Line(width * 0.15, height * 0.56, width * 0.85, height * 0.56));
 
-    // NEW BEST 뱃지
-    if (d.isBest) {
+    // NEW BEST / STAGE BEST 뱃지
+    if (d.isBest || this.isStageBest) {
       const tag = this.add.text(width / 2, height * 0.52, '▲  NEW BEST', {
         fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
         color: '#ffd24a',
@@ -65,6 +67,30 @@ export class ResultScene extends Phaser.Scene {
       this.tweens.add({
         targets: tag, alpha: { from: 0.5, to: 1 },
         duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+      });
+    }
+
+    // 데일리 챌린지 클리어 배너
+    if (this.dailyCleared) {
+      this.time.delayedCall(200, () => {
+        Audio.fanfare?.();
+        Juice.flash(this, COLORS.gold, 280);
+        Juice.ring(this, width / 2, height * 0.3, { color: COLORS.gold, radius: 260, count: 3 });
+        const dailyBanner = this.add.text(width / 2, height * 0.48, '◆  DAILY CLEAR!  +10 💎', {
+          fontFamily: FONT.display, fontSize: '18px', fontStyle: '900',
+          color: '#ffd24a', stroke: '#000', strokeThickness: 4,
+        }).setOrigin(0.5).setDepth(990).setAlpha(0).setScale(0.5).setLetterSpacing(3);
+        this.tweens.add({
+          targets: dailyBanner, alpha: 1, scale: 1, duration: 300, ease: 'Back.Out',
+          onComplete: () => {
+            this.tweens.add({
+              targets: dailyBanner, alpha: 0, y: dailyBanner.y - 20,
+              duration: 600, delay: 1200, ease: 'Cubic.Out',
+              onComplete: () => dailyBanner.destroy(),
+            });
+          },
+        });
+        this.sparkle(width / 2, height * 0.48);
       });
     }
 

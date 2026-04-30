@@ -31,11 +31,11 @@ export const PROB = {
 // 세션 중 레벨 진행. `at`(초)에 진입, 해당 시점부터 아래 설정 적용.
 // 40초 세션을 5단계로 쪼개 점점 긴박해지게.
 export const LEVELS = [
-  { at:  0, label: 'LVL 1', speed: 340, spawn: 0.38, bomb: 0.06 },
-  { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09 },
-  { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
-  { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
-  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
+  { at:  0, label: 'LVL 1', speed: 340, spawn: 0.38, bomb: 0.06, ghost: 0.00 },
+  { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09, ghost: 0.00 },
+  { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12, ghost: 0.04 },
+  { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15, ghost: 0.07 },
+  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18, ghost: 0.10 },
 ];
 
 export const COMBO = {
@@ -188,4 +188,12 @@ export const STAGES = [
 
 export function getStage(id) {
   return STAGES.find(s => s.id === id) ?? STAGES[0];
+}
+
+// 데일리 챌린지 목표점수 — stageId + 날짜로 결정론적으로 생성 (서버 불필요).
+export function getDailyTarget(stageId, dateISO) {
+  const seed = [...(stageId + dateISO)].reduce((s, c) => s + c.charCodeAt(0), 0);
+  const stageIdx = STAGES.findIndex(s => s.id === stageId);
+  const base = GRADE_CUTS.B + (stageIdx < 0 ? 0 : stageIdx) * 1200;
+  return base + (seed % 5) * 400;
 }

@@ -11,12 +11,14 @@ export const ORB_KIND = {
   NORMAL: 'normal',
   RARE: 'rare',
   BOMB: 'bomb',
+  GHOST: 'ghost',
 };
 
 const RADIUS = {
   normal: 30,
   rare: 38,
   bomb: 34,
+  ghost: 30,
 };
 
 const MAX_HIT = 62;
@@ -90,8 +92,9 @@ export class Orb extends Phaser.GameObjects.Container {
     // 스테이지 팔레트 우선. 씬에 stage가 없으면 (예: 프리뷰) 기본색으로 폴백.
     const palette = this.scene.stage?.palette;
     const color =
-      kind === ORB_KIND.RARE ? (palette?.rare ?? COLORS.gold) :
-      kind === ORB_KIND.BOMB ? (palette?.bomb ?? COLORS.red) :
+      kind === ORB_KIND.RARE  ? (palette?.rare ?? COLORS.gold) :
+      kind === ORB_KIND.BOMB  ? (palette?.bomb ?? COLORS.red) :
+      kind === ORB_KIND.GHOST ? 0xaaaacc :
       (palette?.normal ?? COLORS.cyan);
     this._color = color;
     this._radius = r;
@@ -105,15 +108,21 @@ export class Orb extends Phaser.GameObjects.Container {
       // 큰 금지 기호 + 외곽 AVOID 회전 라벨
       this.icon.setText('⛔').setColor('#ffffff').setFontSize(34);
       this.avoidLabel.setVisible(true);
+    } else if (kind === ORB_KIND.GHOST) {
+      // 반투명 환영 — 아이콘 없이 링만
+      this.icon.setText('◌').setColor('#ccccee').setFontSize(24);
+      this.avoidLabel.setVisible(false);
     } else {
       this.icon.setText('').setColor('#ffffff').setFontSize(22);
       this.avoidLabel.setVisible(false);
     }
 
+    // GHOST는 처음부터 반투명으로 등장
+    const targetAlpha = kind === ORB_KIND.GHOST ? 0.45 : 1;
     this.scene.tweens.add({
       targets: this,
       scale: 1,
-      alpha: 1,
+      alpha: targetAlpha,
       duration: 140,
       ease: 'Back.Out',
     });
@@ -129,6 +138,22 @@ export class Orb extends Phaser.GameObjects.Container {
     const r = this._radius;
     const c = this._color;
     const isBomb = this.kind === ORB_KIND.BOMB;
+    const isGhost = this.kind === ORB_KIND.GHOST;
+
+    // GHOST: 매우 단순한 반투명 링 렌더링 — 본체 없이 외곽 링만
+    if (isGhost) {
+      this.halo.clear();
+      this.glow.clear();
+      this.body.clear();
+      this.shimmer.clear();
+      // 빠르게 회전하는 점선 링 두 개 (명확한 "가짜" 시각 언어)
+      UI.drawDashedCircle(this.shimmer, 0, 0, r, 0xaaaacc, 0.75, 10, 2, this._shimmerAngle);
+      UI.drawDashedCircle(this.shimmer, 0, 0, r * 0.65, 0xaaaacc, 0.45, 8, 1.5, -this._shimmerAngle * 1.5);
+      // 중앙 희미한 원
+      this.body.fillStyle(0xaaaacc, 0.12);
+      this.body.fillCircle(0, 0, r * 0.5);
+      return;
+    }
 
     // 할로 — 폭탄은 더 강한 맥동 + 진한 레드
     this.halo.clear();
@@ -238,8 +263,9 @@ export class Orb extends Phaser.GameObjects.Container {
 
     this._pulse += dt * 6;
     const spinRate =
-      this.kind === ORB_KIND.RARE ? 1.8 :
-      this.kind === ORB_KIND.BOMB ? 2.2 : 0.7;
+      this.kind === ORB_KIND.RARE  ? 1.8 :
+      this.kind === ORB_KIND.BOMB  ? 2.2 :
+      this.kind === ORB_KIND.GHOST ? 3.2 : 0.7;
     this._shimmerAngle += dt * spinRate;
     const amp = Math.sin(this._pulse) * 2;
     this.drawAll(amp);
@@ -249,6 +275,9 @@ export class Orb extends Phaser.GameObjects.Container {
     } else if (this.kind === ORB_KIND.BOMB) {
       // 불안정한 떨림
       this.rotation = Math.sin(this._pulse * 2.5) * 0.18;
+    } else if (this.kind === ORB_KIND.GHOST) {
+      // 알파 깜빡임 — 실체감 없는 환영 시각 신호
+      this.setAlpha(0.32 + Math.sin(this._pulse * 4) * 0.13);
     }
 
     if (this.kind === ORB_KIND.RARE) {
@@ -286,8 +315,13 @@ export class Orb extends Phaser.GameObjects.Container {
   deactivate() {
     // 아직 alive=true 상태에서 들어왔다면 "낙하 중 놓침(미스)"
     // pop()이나 endSession()은 먼저 alive=false로 만드므로 여기선 제외.
-    if (this.alive && this.kind !== ORB_KIND.BOMB && this.scene && this.scene.events) {
-      this.scene.events.emit('orbMissed', this);
+    if (this.alive && this.scene && this.scene.events) {
+      if (this.kind === ORB_KIND.BOMB) {
+        // 폭탄이 탭 없이 화면 밖으로 빠졌다 = 성공적으로 회피
+        this.scene.events.emit('bombDodged', this);
+      } else {
+        this.scene.events.emit('orbMissed', this);
+      }
     }
     // 링크 파트너 참조는 여기서 정리하지 않음 — 탭 후 pop 페이드 동안
     // 파트너 쪽 2nd 탭이 늦게 들어올 수 있으니 reset()에서만 정리한다.

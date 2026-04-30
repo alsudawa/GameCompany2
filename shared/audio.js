@@ -474,4 +474,29 @@ export const Audio = {
       tone({ freq: f, duration: 0.16, type: 'triangle', gain: 0.065, delay: i * 0.07 }));
     tone({ freq: 1318.5, duration: 0.35, type: 'sine', gain: 0.05, delay: 0.28 });
   },
+
+  // COUNTDOWN — 매 초 하강 틱 (긴박감)
+  countdown() {
+    tone({ freq: 660, duration: 0.07, type: 'square', gain: 0.06, sweepTo: 440 });
+    noise({ duration: 0.04, gain: 0.025 });
+  },
+
+  // FEVER — 상승 사이렌 (콤보 20 진입)
+  fever() {
+    tone({ freq: 220, duration: 0.35, type: 'sawtooth', gain: 0.07, sweepTo: 880 });
+    tone({ freq: 440, duration: 0.30, type: 'sine',     gain: 0.05, sweepTo: 1760, delay: 0.1 });
+    tone({ freq: 880, duration: 0.25, type: 'triangle', gain: 0.06, sweepTo: 2200, delay: 0.22 });
+  },
+
+  // DODGE — 폭탄 회피 성공 ("phew" 짧은 상승)
+  dodge() {
+    tone({ freq: 440, duration: 0.08, type: 'triangle', gain: 0.04, sweepTo: 880 });
+    tone({ freq: 880, duration: 0.06, type: 'sine',     gain: 0.03, delay: 0.06 });
+  },
+
+  // PERFECT STREAK — 스트릭 중 화음 벨
+  perfectStreak() {
+    tone({ freq: 1318.5, duration: 0.18, type: 'sine', gain: 0.06 });
+    tone({ freq: 1760.0, duration: 0.22, type: 'sine', gain: 0.05, delay: 0.04 });
+  },
 };
