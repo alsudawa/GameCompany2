@@ -88,6 +88,12 @@ export class Tower extends Phaser.GameObjects.Container {
     });
   }
 
+  // 명시적 tier 설정 (TowerSlot에서 빌드 시 사용)
+  setTier(tier) {
+    this.tier = Math.max(0, Math.min(2, tier));
+    this.refreshTier();
+  }
+
   showRange() {
     this.rangeRing.clear();
     this.rangeRing.fillStyle(this.cfg.color, 0.12);

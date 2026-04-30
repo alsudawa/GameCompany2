@@ -1,4 +1,6 @@
-// GameScene — TD: 경로 따라가는 적 + 끝점 왕좌 건물 + 타워 빌드.
+// GameScene — 하이브리드 King Shot.
+// 영웅이 자유 2D 이동 + 자동 사격, 경로 적이 왕좌로 진군, 영웅이 슬롯 위에 서서 타워 빌드,
+// 적 처치 시 코인 드롭+자석 수집, 자동 웨이브 진행 + 베이스 진화.
 
 import { COLORS, FONT, GAME, KEY, TILE, TOWERS } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
@@ -7,13 +9,22 @@ import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
 import { buildPath, tilePxCenter } from '../maps/path.js';
+import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
-import { Tower } from '../entities/Tower.js';
 import { Projectile } from '../entities/Projectile.js';
 import { Building } from '../entities/Building.js';
+import { TowerSlot } from '../entities/TowerSlot.js';
+import { Coin } from '../entities/Coin.js';
 
-const ENEMY_POOL = 80;
-const PROJECTILE_POOL = 120;
+const ENEMY_POOL = 100;
+const PROJECTILE_POOL = 160;
+const COIN_POOL = 60;
+const WAVE_BREATHER = 3.0;       // 웨이브 간 휴식(초)
+
+// 슬롯에 배정할 타워 종류 — 라운드별 다르게 (단조로움 방지)
+const SLOT_TOWER_KINDS = ['archer', 'cannon', 'frost', 'mortar', 'archer', 'cannon',
+                          'frost', 'archer', 'mortar', 'cannon', 'frost', 'archer',
+                          'archer', 'cannon', 'frost'];
 
 export class GameScene extends Phaser.Scene {
   constructor() { super('GameScene'); }
@@ -29,11 +40,10 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#3a7d44');
     this.cameras.main.fadeIn(280, 0, 0, 0);
 
-    // 1) 풍부한 배경
+    // 1) 배경
     this.drawGround(width, height);
     this.drawPath();
     this.drawDecorations();
-    this.drawBanners();
 
     // 2) 경로
     this.path = buildPath(this.level.pathWaypoints);
@@ -51,46 +61,67 @@ export class GameScene extends Phaser.Scene {
       p.setDepth(60);
       this.projectiles.push(p);
     }
+    this.coins = [];
+    for (let i = 0; i < COIN_POOL; i++) {
+      const c = new Coin(this);
+      c.setDepth(48);
+      this.coins.push(c);
+    }
 
-    // 4) 왕좌 건물 (경로 끝)
+    // 4) 왕좌 (경로 끝)
     const t = this.level.throne;
     const tp = tilePxCenter(t.col, t.row);
     this.building = new Building(this, tp.x, tp.y - 12);
     this.building.setDepth(45);
 
-    // 5) 타워 슬롯
-    this.drawTowerSlots();
+    // 5) 영웅 (왕좌 근처에서 시작)
+    this.king = new King(this);
+    this.king.setPosition(tp.x, tp.y + 60);
+    this.king.setDepth(80);
 
-    // 6) 상태
-    this.gold = GAME.startGold;
+    // 6) 타워 슬롯 (TowerSlot 엔티티)
+    this.slots = [];
+    this.towers = [];
+    (this.level.towerSlots ?? []).forEach((s, i) => {
+      const [c, r] = s;
+      const sp = tilePxCenter(c, r);
+      const kind = SLOT_TOWER_KINDS[i % SLOT_TOWER_KINDS.length];
+      const slot = new TowerSlot(this, sp.x, sp.y, kind);
+      slot.setDepth(15);
+      this.slots.push(slot);
+    });
+
+    // 7) 상태
     this.score = 0;
     this.kills = 0;
     this.coinsEarned = 0;
     this.waveIdx = -1;
     this.waveActive = false;
+    this.waveBreather = 0;
     this.spawnQueue = [];
     this.spawnElapsed = 0;
     this.boss = null;
     this.isPlaying = false;
     this.isOver = false;
-    this.towers = [];
-    this.selectedTower = null;
-    this.buildMenu = null;
-    this.towerMenu = null;
 
-    // 7) HUD + START WAVE 버튼
+    // 8) 입력 — 자유 2D 드래그
+    this.input.on('pointerdown', (p) => this.onPointer(p));
+    this.input.on('pointermove', (p) => { if (p.isDown) this.onPointer(p); });
+    const release = () => this.king.clearDragTarget();
+    this.input.on('pointerup', release);
+    this.input.on('pointerupoutside', release);
+
+    // 9) HUD
     this.drawHud();
-    this.makeWaveButton();
-
-    // 8) 빈 공간 탭으로 메뉴 닫기
-    this.input.on('pointerdown', (p, gameObjects) => {
-      if (gameObjects && gameObjects.length > 0) return;
-      this.closeBuildMenu();
-      this.deselectTower();
-    });
 
     Audio.playBgm('stage_dawn', { fadeIn: 0.6, volume: 0.55 });
     this.runCountdown();
+  }
+
+  onPointer(p) {
+    const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
+    const y = Phaser.Math.Clamp(p.y, 80, this.scale.height - 30);
+    this.king.setDragTarget(x, y);
   }
 
   runCountdown() {
@@ -105,7 +136,12 @@ export class GameScene extends Phaser.Scene {
         targets: big, scale: { from: 1.4, to: 1 }, alpha: { from: 1, to: 0 },
         duration: 700, ease: 'Cubic.Out',
         onComplete: () => {
-          if (n <= 0) { big.destroy(); this.isPlaying = true; return; }
+          if (n <= 0) {
+            big.destroy();
+            this.isPlaying = true;
+            this.startNextWave();    // 첫 웨이브 자동 시작
+            return;
+          }
           n--; tick();
         },
       });
@@ -117,6 +153,9 @@ export class GameScene extends Phaser.Scene {
     if (!this.isPlaying || this.isOver) return;
     const dt = Math.min(0.05, delta / 1000);
 
+    // 영웅
+    this.king.update(dt);
+
     // 웨이브 스폰
     if (this.waveActive && this.spawnQueue.length > 0) {
       this.spawnElapsed += dt;
@@ -126,12 +165,33 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 적 업데이트 + 끝점 도달 처리
+    // 적
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const r = e.update(dt, this);
       if (r?.reachedEnd) this.onEnemyReachedThrone(e, r.damage);
     }
+
+    // 영웅↔적 접촉
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dx = e.x - this.king.x;
+      const dy = e.y - this.king.y;
+      const r = e.hitRadius + this.king.hitRadius;
+      if (dx * dx + dy * dy < r * r) {
+        if (!e._heroTouchT || this.time.now > e._heroTouchT) {
+          e._heroTouchT = this.time.now + 600;
+          this.king.takeDamage(1);
+          Juice.flash(this, COLORS.capeRed, 160);
+          Juice.shake(this, 0.012, 160);
+          if (this.king.hp <= 0) this.gameOver();
+        }
+      }
+    }
+
+    // 영웅 자동 사격
+    const target = this.findFireTarget();
+    this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w));
 
     // 타워
     for (const t of this.towers) t.update(dt, this);
@@ -143,10 +203,42 @@ export class GameScene extends Phaser.Scene {
       if (p.alive) this.checkProjectileVsEnemies(p);
     }
 
-    // 웨이브 클리어 판정
+    // 슬롯 — 영웅이 위에 있는지 검사 + 게이지 업데이트
+    for (const s of this.slots) {
+      if (s.tier >= 3) { s.update(dt, this); continue; }
+      const inside = s.contains(this.king.x, this.king.y);
+      s.setCharging(inside);
+      s.update(dt, this);
+    }
+
+    // 코인 자석/수집
+    const magnetR = this.king.magnetRadius;
+    for (const c of this.coins) {
+      if (!c.alive) continue;
+      c.update(dt, this.king.x, this.king.y, magnetR);
+      if (c.alive) {
+        const dx = c.x - this.king.x;
+        const dy = c.y - this.king.y;
+        const r = this.king.hitRadius + 6;
+        if (dx * dx + dy * dy < r * r) {
+          this.coinsEarned += c.value;
+          this.score += c.value * 2;
+          c.deactivate();
+          this.updateHud();
+          // 작은 반짝
+          Juice.spark(this, c.x, c.y, COLORS.goldHud, 8);
+        }
+      }
+    }
+
+    // 웨이브 클리어 → breather → 다음 웨이브
     if (this.waveActive && this.spawnQueue.length === 0 &&
         !this.enemies.some(e => e.alive)) {
       this.endWave();
+    }
+    if (!this.waveActive && this.waveBreather > 0) {
+      this.waveBreather -= dt;
+      if (this.waveBreather <= 0) this.startNextWave();
     }
   }
 
@@ -155,8 +247,6 @@ export class GameScene extends Phaser.Scene {
     const ts = GAME.tileSize;
     const scale = ts / GAME.spriteTile;
     const tint = this.level.groundTint ?? 0xffffff;
-
-    // 베이스 잔디
     for (let y = 0; y < height; y += ts) {
       for (let x = 0; x < width; x += ts) {
         const tile = (Math.random() < 0.85) ? TILE.GRASS : TILE.GRASS_PLAIN;
@@ -165,22 +255,18 @@ export class GameScene extends Phaser.Scene {
         if (tint !== 0xffffff) img.setTint(tint);
       }
     }
-
-    // 좌우 돌담 (성벽 느낌)
-    const stoneCol = 0x6b6e76;
-    const stoneDk = 0x4a4d52;
-    const wallW = 14;
+    // 좌우 돌담
     const wall = this.add.graphics().setDepth(2);
+    const wallW = 12;
     [0, width - wallW].forEach(wx => {
-      wall.fillStyle(stoneDk, 1);
+      wall.fillStyle(0x4a4d52, 1);
       wall.fillRect(wx, 0, wallW, height);
-      wall.fillStyle(stoneCol, 1);
+      wall.fillStyle(0x6e6e76, 1);
       wall.fillRect(wx + 2, 0, wallW - 4, height);
-      wall.lineStyle(1, stoneDk, 0.7);
+      wall.lineStyle(1, 0x3a3d42, 0.7);
       for (let y = 0; y < height; y += 28) {
-        const off = (Math.floor(y / 28) % 2) * 5;
         wall.beginPath();
-        wall.moveTo(wx + 2 + off, y + 0.5);
+        wall.moveTo(wx + 2, y + 0.5);
         wall.lineTo(wx + wallW - 2, y + 0.5);
         wall.strokePath();
       }
@@ -193,25 +279,18 @@ export class GameScene extends Phaser.Scene {
       x: c * ts + ts / 2, y: r * ts + ts / 2,
     }));
     const lane = ts - 4;
-    // 어두운 외곽
-    const outer = this.add.graphics().setDepth(3);
-    outer.lineStyle(lane + 8, 0x4a2a14, 1);
-    outer.lineCap = 'round'; outer.lineJoin = 'round';
-    outer.beginPath();
-    outer.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) outer.lineTo(pts[i].x, pts[i].y);
-    outer.strokePath();
-    // 본체
-    const body = this.add.graphics().setDepth(4);
-    body.lineStyle(lane, 0x8b5a3c, 1);
-    body.lineCap = 'round'; body.lineJoin = 'round';
-    body.beginPath();
-    body.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) body.lineTo(pts[i].x, pts[i].y);
-    body.strokePath();
-    // 안쪽 밝은 라인
+    const draw = (g, w, color) => {
+      g.lineStyle(w, color, 1);
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath();
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.strokePath();
+    };
+    draw(this.add.graphics().setDepth(3), lane + 8, 0x4a2a14);
+    draw(this.add.graphics().setDepth(4), lane, 0x8b5a3c);
     const inner = this.add.graphics().setDepth(5);
-    inner.lineStyle(lane * 0.4, 0xb87a4a, 0.8);
+    inner.lineStyle(lane * 0.4, 0xb87a4a, 0.7);
     inner.lineCap = 'round'; inner.lineJoin = 'round';
     inner.beginPath();
     inner.moveTo(pts[0].x, pts[0].y);
@@ -223,11 +302,12 @@ export class GameScene extends Phaser.Scene {
       const a = pts[i], b = pts[i + 1];
       const dx = b.x - a.x, dy = b.y - a.y;
       const len = Math.hypot(dx, dy);
+      if (!len) continue;
       const nx = dx / len, ny = dy / len;
       const step = 22;
       for (let t = step; t < len - step / 2; t += step) {
-        dots.fillStyle(0xf4e8c8, 0.7);
-        dots.fillCircle(a.x + nx * t, a.y + ny * t, 1.6);
+        dots.fillStyle(0xf4e8c8, 0.6);
+        dots.fillCircle(a.x + nx * t, a.y + ny * t, 1.5);
       }
     }
   }
@@ -252,252 +332,97 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  drawBanners() {
-    // 경로 옆에 일정 간격으로 적색 깃발 (의미있는 시각 디테일)
-    const ts = GAME.tileSize;
-    const pts = this.level.pathWaypoints.map(([c, r]) => ({
-      x: c * ts + ts / 2, y: r * ts + ts / 2,
-    }));
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      if (len < 80) continue;
-      const nx = dx / len, ny = dy / len;
-      // 수직(좌측 사이드)
-      const sx = -ny, sy = nx;
-      const mid = { x: a.x + nx * (len * 0.5), y: a.y + ny * (len * 0.5) };
-      [-1, 1].forEach(side => {
-        const bx = mid.x + sx * side * (ts * 0.85);
-        const by = mid.y + sy * side * (ts * 0.85);
-        if (bx < 18 || bx > this.scale.width - 18) return;
-        if (by < 4 || by > this.scale.height - 4) return;
-        this.drawBanner(bx, by);
-      });
+  // ────────────── 웨이브 (자동) ──────────────
+  startNextWave() {
+    if (this.waveActive) return;
+    this.waveIdx++;
+    const wave = this.level.waves[this.waveIdx];
+    if (!wave) {
+      // 웨이브 끝 → 모든 적 처치 후 victory()
+      return;
     }
-  }
+    this.waveActive = true;
+    this.spawnElapsed = 0;
+    this.spawnQueue = [];
+    for (const u of wave.units) {
+      const [kind, count, interval, delay] = u;
+      for (let i = 0; i < count; i++) {
+        this.spawnQueue.push({ t: (delay ?? 0) + i * (interval ?? 0.6), kind });
+      }
+    }
+    this.spawnQueue.sort((a, b) => a.t - b.t);
 
-  drawBanner(x, y) {
-    const g = this.add.graphics().setDepth(18);
-    // 막대
-    g.fillStyle(0x3e2e1e, 1);
-    g.fillRect(x - 1, y - 14, 2, 22);
-    // 깃발
-    g.fillStyle(COLORS.capeRedDk, 1);
-    g.fillTriangle(x + 1, y - 14, x + 13, y - 9, x + 1, y - 4);
-    g.fillStyle(COLORS.capeRed, 1);
-    g.fillTriangle(x + 1, y - 13, x + 12, y - 9, x + 1, y - 5);
-    // 골드 핀
-    g.fillStyle(COLORS.goldHud, 1);
-    g.fillCircle(x, y - 14, 1.6);
-    // 펄럭 트윈 (작게)
+    // 웨이브 배너
+    const big = this.add.text(this.scale.width / 2, 100, wave.label, {
+      fontFamily: FONT.display, fontSize: '28px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
     this.tweens.add({
-      targets: g, scaleX: { from: 1, to: 0.92 },
-      duration: 600 + Math.random() * 200,
-      yoyo: true, repeat: -1, ease: 'Sine.InOut',
+      targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
+      duration: 360, ease: 'Back.Out',
     });
-  }
-
-  drawTowerSlots() {
-    const ts = GAME.tileSize;
-    this.slots = [];
-    for (const [c, r] of (this.level.towerSlots || [])) {
-      const px = c * ts + ts / 2;
-      const py = r * ts + ts / 2;
-      const slot = { col: c, row: r, x: px, y: py, tower: null };
-
-      const cont = this.add.container(px, py).setDepth(15);
-      const ring = this.add.graphics();
-      const rad = 17;
-      ring.fillStyle(0x000000, 0.45);
-      ring.fillCircle(2, 2, rad);
-      ring.fillStyle(0xf4e8c8, 0.78);
-      ring.fillCircle(0, 0, rad);
-      ring.lineStyle(2.5, 0xc89438, 0.95);
-      ring.strokeCircle(0, 0, rad);
-      ring.lineStyle(1, 0xf4c542, 0.9);
-      ring.strokeCircle(0, 0, rad - 3);
-      ring.lineStyle(3, 0xc89438, 0.95);
-      ring.beginPath();
-      ring.moveTo(-7, 0); ring.lineTo(7, 0);
-      ring.moveTo(0, -7); ring.lineTo(0, 7);
-      ring.strokePath();
-      cont.add(ring);
-
-      this.tweens.add({
-        targets: cont, scale: { from: 1, to: 1.12 },
-        duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut',
-      });
-
-      cont.setSize(48, 48);
-      cont.setInteractive(new Phaser.Geom.Circle(0, 0, 24), Phaser.Geom.Circle.Contains);
-      cont.on('pointerover', () => this.tweens.add({ targets: cont, scale: 1.18, duration: 120 }));
-      cont.on('pointerout',  () => this.tweens.add({ targets: cont, scale: 1, duration: 120 }));
-      cont.on('pointerdown', (p, lx, ly, evt) => {
-        evt.stopPropagation?.();
-        this.onSlotClick(slot);
-      });
-      slot.image = cont;
-      this.slots.push(slot);
-    }
-  }
-
-  // ────────────── 타워 / 슬롯 ──────────────
-  onSlotClick(slot) {
-    this.closeBuildMenu();
-    this.deselectTower();
-    if (slot.tower) this.selectTower(slot.tower);
-    else this.openBuildMenu(slot);
-  }
-
-  openBuildMenu(slot) {
-    const c = this.add.container(slot.x, slot.y).setDepth(200);
-    const radius = 52;
-    const kinds = ['archer', 'cannon', 'mortar', 'frost'];
-    const angles = [-Math.PI * 0.75, -Math.PI * 0.25, Math.PI * 0.25, Math.PI * 0.75];
-    kinds.forEach((kind, i) => {
-      const cfg = TOWERS[kind];
-      const ang = angles[i];
-      const ix = Math.cos(ang) * radius;
-      const iy = Math.sin(ang) * radius;
-      const item = this.add.container(ix, iy);
-      const bg = this.add.graphics();
-      bg.fillStyle(0x000000, 0.55);
-      bg.fillCircle(2, 2, 20);
-      bg.fillStyle(COLORS.parchment, 0.95);
-      bg.fillCircle(0, 0, 19);
-      bg.lineStyle(2, COLORS.woodDark, 1);
-      bg.strokeCircle(0, 0, 19);
-      bg.lineStyle(1, cfg.color, 0.9);
-      bg.strokeCircle(0, 0, 17);
-      const icon = this.add.text(0, -3, cfg.icon, {
-        fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
-        color: '#3e2e1e',
-      }).setOrigin(0.5);
-      const aff = this.gold >= cfg.cost[0];
-      const lbl = this.add.text(0, 22, `${cfg.cost[0]}g`, {
-        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-        color: aff ? '#f4c542' : '#ff5050', stroke: '#3e2e1e', strokeThickness: 2,
-      }).setOrigin(0.5);
-      item.add([bg, icon, lbl]);
-      item.setSize(40, 40);
-      item.setInteractive(new Phaser.Geom.Circle(0, 0, 22), Phaser.Geom.Circle.Contains);
-      item.on('pointerover', () => this.tweens.add({ targets: item, scale: 1.18, duration: 120 }));
-      item.on('pointerout',  () => this.tweens.add({ targets: item, scale: 1, duration: 120 }));
-      item.on('pointerdown', (p, lx, ly, evt) => {
-        evt.stopPropagation?.();
-        if (this.gold < cfg.cost[0]) {
-          Audio.miss();
-          this.tweens.add({ targets: lbl, scale: 1.4, duration: 100, yoyo: true });
-          return;
-        }
-        this.gold -= cfg.cost[0];
-        this.placeTower(slot, kind);
-        this.closeBuildMenu();
-        this.updateHud();
-      });
-      item.setAlpha(0).setScale(0.4);
-      this.tweens.add({
-        targets: item, alpha: 1, scale: 1,
-        duration: 220, delay: i * 40, ease: 'Back.Out',
-      });
-      c.add(item);
+    this.tweens.add({
+      targets: big, alpha: 0, y: big.y - 20,
+      delay: 800, duration: 320, onComplete: () => big.destroy(),
     });
-    this.buildMenu = c;
+    Audio.levelUp();
+
+    // 베이스 진화 (웨이브 1, 3, 5 진화)
+    if (this.waveIdx === 1) this.building.evolve(1);
+    else if (this.waveIdx === 2) this.building.evolve(2);
+    else if (this.waveIdx === 4) this.building.evolve(3);
+
+    this.updateHud();
   }
 
-  closeBuildMenu() {
-    if (this.buildMenu) {
-      const m = this.buildMenu;
-      this.buildMenu = null;
-      this.tweens.add({
-        targets: m, alpha: 0, scale: 0.6,
-        duration: 160, ease: 'Cubic.In',
-        onComplete: () => m.destroy(),
-      });
-    }
-  }
-
-  selectTower(tower) {
-    this.selectedTower = tower;
-    tower.showRange();
-    const c = this.add.container(tower.x, tower.y - 50).setDepth(200);
-    const w = 110, h = 28;
-    const bg = this.add.graphics();
-    bg.fillStyle(0x000000, 0.55);
-    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
-    bg.fillStyle(COLORS.parchment, 0.95);
-    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
-    bg.lineStyle(2, COLORS.woodDark, 1);
-    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
-    bg.lineStyle(1, COLORS.goldHud, 0.85);
-    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
-    c.add(bg);
-    if (tower.canUpgrade()) {
-      const cost = tower.nextCost;
-      const aff = this.gold >= cost;
-      const t = this.add.text(0, 0, `▲ UPGRADE ${cost}g`, {
-        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-        color: aff ? '#3e2e1e' : '#a04040',
-      }).setOrigin(0.5);
-      c.add(t);
-      c.setSize(w, h);
-      c.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
-      c.on('pointerdown', (p, lx, ly, evt) => {
-        evt.stopPropagation?.();
-        if (this.gold < cost) { Audio.miss(); return; }
-        this.gold -= cost;
-        tower.upgrade();
-        this.deselectTower();
-        this.updateHud();
-        Audio.purchase();
-      });
+  endWave() {
+    this.waveActive = false;
+    Audio.fanfare();
+    Juice.flash(this, COLORS.goldHud, 200);
+    if (this.waveIdx >= this.level.waves.length - 1) {
+      this.victory();
     } else {
-      const t = this.add.text(0, 0, 'MAX TIER ★★★', {
-        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-        color: '#3e2e1e',
-      }).setOrigin(0.5);
-      c.add(t);
-    }
-    this.towerMenu = c;
-  }
-
-  deselectTower() {
-    if (this.selectedTower) {
-      this.selectedTower.hideRange();
-      this.selectedTower = null;
-    }
-    if (this.towerMenu) {
-      const m = this.towerMenu;
-      this.towerMenu = null;
-      this.tweens.add({
-        targets: m, alpha: 0, duration: 140,
-        onComplete: () => m.destroy(),
-      });
+      this.waveBreather = WAVE_BREATHER;
+      // 보너스 코인 (드롭 형태로 영웅 근처에)
+      for (let i = 0; i < 5; i++) {
+        this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
+                       this.king.y + (Math.random() - 0.5) * 60, 5);
+      }
+      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+        '+25 BONUS', { color: COLORS.goldHud, size: 18 });
+      this.updateHud();
     }
   }
 
-  placeTower(slot, kind) {
-    const tower = new Tower(this, slot.x, slot.y, kind);
-    tower.setDepth(40);
-    slot.tower = tower;
-    slot.image.setVisible(false);
-    this.towers.push(tower);
-    Audio.purchase();
-    Juice.flash(this, TOWERS[kind].color, 160);
-    Juice.ring(this, slot.x, slot.y, { color: TOWERS[kind].color, radius: 52, duration: 380 });
-    tower.setSize(40, 40);
-    tower.setInteractive(new Phaser.Geom.Rectangle(-20, -20, 40, 40),
-                        Phaser.Geom.Rectangle.Contains);
-    tower.on('pointerdown', (p, lx, ly, evt) => {
-      evt.stopPropagation?.();
-      this.closeBuildMenu();
-      if (this.selectedTower === tower) this.deselectTower();
-      else { this.deselectTower(); this.selectTower(tower); }
-    });
+  spawnEnemy(kind) {
+    const e = this.enemies.find(en => !en.alive);
+    if (!e) return;
+    e.reset(kind, this.path, this.hpMul);
+    if (kind === 'boss') this.boss = e;
   }
 
   // ────────────── 사격/충돌 ──────────────
+  findFireTarget() {
+    let best = null;
+    let bestD = this.king.weapon.range * this.king.weapon.range;
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const dx = e.x - this.king.x;
+      const dy = e.y - this.king.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = e; }
+    }
+    return best;
+  }
+
+  spawnArrow(x, y, angle, weapon) {
+    const p = this.projectiles.find(pr => !pr.alive);
+    if (!p) return;
+    p.reset(x, y, { x: x + Math.cos(angle) * 100, y: y + Math.sin(angle) * 100 },
+      'archer', { damage: weapon.damage, speed: weapon.projectileSpeed });
+    Audio.tap();
+  }
+
   fireProjectile(tower, target) {
     const p = this.projectiles.find(pr => !pr.alive);
     if (!p) return;
@@ -506,10 +431,6 @@ export class GameScene extends Phaser.Scene {
       splash: tower.cfg.splash,
       slow: tower.cfg.slow,
       speed: tower.cfg.bulletSpeed,
-    });
-    this.tweens.add({
-      targets: tower.body, scaleX: { from: 0.5, to: 0.55 },
-      duration: 80, yoyo: true,
     });
     Audio.tap();
   }
@@ -521,18 +442,17 @@ export class GameScene extends Phaser.Scene {
       const dy = e.y - p.y;
       const r = e.hitRadius + 8;
       if (dx * dx + dy * dy < r * r) {
-        const splash = p.splash;
-        if (splash > 0) {
+        if (p.splash > 0) {
           for (const e2 of this.enemies) {
             if (!e2.alive) continue;
             const ddx = e2.x - p.x;
             const ddy = e2.y - p.y;
-            if (ddx * ddx + ddy * ddy < (splash + 18) * (splash + 18)) {
+            if (ddx * ddx + ddy * ddy < (p.splash + 18) * (p.splash + 18)) {
               const killed = e2.takeDamage(p.dmg);
               if (killed) this.onEnemyKilled(e2);
             }
           }
-          this.spawnExplosion(p.x, p.y, splash);
+          this.spawnExplosion(p.x, p.y, p.splash);
         } else {
           const killed = e.takeDamage(p.dmg);
           if (p.slow > 0) e.applySlow(p.slow, 1500);
@@ -557,15 +477,23 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  // ────────────── 코인 ──────────────
+  spawnCoin(x, y, value = 1) {
+    const c = this.coins.find(co => !co.alive);
+    if (!c) return;
+    c.reset(x, y, value);
+  }
+
   onEnemyKilled(e) {
-    this.gold += e.bounty;
     this.score += e.scoreVal;
     this.kills++;
-    this.coinsEarned += e.bounty;
-    Juice.popText(this, e.x, e.y - 14, `+${e.bounty}`, {
-      color: 0xf4c542, size: 12, rise: 24, duration: 380,
-    });
     if (e === this.boss) this.boss = null;
+    // 코인 드롭 — 적 보상에 비례한 개수
+    const drops = Math.max(3, Math.min(12, Math.round(e.bounty / 3)));
+    for (let i = 0; i < drops; i++) {
+      this.spawnCoin(e.x + (Math.random() - 0.5) * 12,
+                     e.y + (Math.random() - 0.5) * 8, 1);
+    }
     this.updateHud();
   }
 
@@ -577,64 +505,7 @@ export class GameScene extends Phaser.Scene {
     if (destroyed) this.gameOver();
   }
 
-  // ────────────── 웨이브 ──────────────
-  startNextWave() {
-    if (this.waveActive) return;
-    this.waveIdx++;
-    const wave = this.level.waves[this.waveIdx];
-    if (!wave) return;
-    this.waveActive = true;
-    this.spawnElapsed = 0;
-    this.spawnQueue = [];
-    for (const u of wave.units) {
-      const [kind, count, interval, delay] = u;
-      for (let i = 0; i < count; i++) {
-        this.spawnQueue.push({ t: (delay ?? 0) + i * (interval ?? 0.6), kind });
-      }
-    }
-    this.spawnQueue.sort((a, b) => a.t - b.t);
-
-    const big = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40,
-      wave.label, {
-        fontFamily: FONT.display, fontSize: '32px', fontStyle: '900',
-        color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
-      }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
-    this.tweens.add({
-      targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
-      duration: 360, ease: 'Back.Out',
-    });
-    this.tweens.add({
-      targets: big, alpha: 0, y: big.y - 30,
-      delay: 800, duration: 320, onComplete: () => big.destroy(),
-    });
-    Audio.levelUp();
-    if (this.waveBtn) this.waveBtn.setVisible(false);
-    this.updateHud();
-  }
-
-  endWave() {
-    this.waveActive = false;
-    Audio.fanfare();
-    Juice.flash(this, COLORS.goldHud, 200);
-    if (this.waveIdx >= this.level.waves.length - 1) {
-      this.victory();
-    } else {
-      if (this.waveBtn) this.waveBtn.setVisible(true);
-      this.gold += 30;
-      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
-        '+30 GOLD', { color: COLORS.goldHud, size: 18 });
-      this.updateHud();
-    }
-  }
-
-  spawnEnemy(kind) {
-    const e = this.enemies.find(en => !en.alive);
-    if (!e) return;
-    e.reset(kind, this.path, this.hpMul);
-    if (kind === 'boss') this.boss = e;
-  }
-
-  // ────────────── HUD + 버튼 ──────────────
+  // ────────────── HUD ──────────────
   drawHud() {
     const { width } = this.scale;
     const bar = this.add.graphics().setDepth(100);
@@ -645,7 +516,7 @@ export class GameScene extends Phaser.Scene {
 
     this.add.image(20, 25, KEY.tilesheet, TILE.COIN_GOLD)
       .setScale(0.45).setDepth(101);
-    this.hudGold = this.add.text(38, 16, String(this.gold), {
+    this.hudCoins = this.add.text(38, 16, '0', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0, 0).setDepth(101);
@@ -654,70 +525,34 @@ export class GameScene extends Phaser.Scene {
       fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
       color: '#d9c897',
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(3);
-    this.hudWave = this.add.text(width / 2, 22, 'PRESS START', {
+    this.hudWave = this.add.text(width / 2, 22, '...', {
       fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
       color: '#f0e6d0', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(2);
 
-    this.hudKills = this.add.text(width - 20, 16, 'K 0', {
+    this.hudHp = this.add.text(width - 20, 16, '♥ 5', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
-      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#ff6b6b', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(101);
+
+    this.updateHud();
   }
 
   updateHud() {
-    if (!this.hudGold) return;
-    this.hudGold.setText(String(this.gold));
-    this.hudKills.setText('K ' + this.kills);
+    if (!this.hudCoins) return;
+    this.hudCoins.setText(String(this.coinsEarned));
+    this.hudHp.setText('♥ ' + this.king.hp);
     if (this.waveActive) {
       this.hudWave.setText(this.level.waves[this.waveIdx]?.label ?? '');
       this.hudWave.setColor('#f4c542');
+    } else if (this.waveBreather > 0) {
+      this.hudWave.setText('PREPARING...');
+      this.hudWave.setColor('#9ad0a0');
     } else if (this.waveIdx >= this.level.waves.length - 1) {
       this.hudWave.setText('CLEARED');
-    } else if (this.waveIdx >= 0) {
-      this.hudWave.setText('CLEAR · NEXT?');
-      this.hudWave.setColor('#9ad0a0');
     } else {
-      this.hudWave.setText('PRESS START');
+      this.hudWave.setText('READY');
     }
-  }
-
-  makeWaveButton() {
-    const w = 180, h = 44;
-    const cx = this.scale.width / 2;
-    const cy = this.scale.height - 36;
-    const c = this.add.container(cx, cy).setDepth(120);
-    const bg = this.add.graphics();
-    bg.fillStyle(0x000000, 0.5);
-    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
-    bg.fillStyle(COLORS.capeRed, 1);
-    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
-    bg.fillStyle(COLORS.capeRedDk, 1);
-    bg.fillRoundedRect(-w / 2, h / 2 - 5, w, 5, 6);
-    bg.lineStyle(2, COLORS.woodDark, 1);
-    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
-    bg.lineStyle(1, COLORS.goldHud, 0.9);
-    bg.strokeRoundedRect(-w / 2 + 2, -h / 2 + 2, w - 4, h - 4, 5);
-    c.add(bg);
-    const t = this.add.text(0, 0, '⚔ START WAVE', {
-      fontFamily: FONT.display, fontSize: '17px', fontStyle: '900',
-      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
-    }).setOrigin(0.5).setLetterSpacing?.(3);
-    c.add(t);
-    c.setSize(w, h);
-    c.setInteractive({ useHandCursor: true });
-    c.on('pointerover', () => this.tweens.add({ targets: c, scale: 1.06, duration: 140 }));
-    c.on('pointerout',  () => this.tweens.add({ targets: c, scale: 1, duration: 140 }));
-    c.on('pointerdown', (p, lx, ly, evt) => {
-      evt.stopPropagation?.();
-      Audio.purchase();
-      this.startNextWave();
-    });
-    this.waveBtn = c;
-    this.tweens.add({
-      targets: c, scale: { from: 1, to: 1.04 },
-      duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
-    });
   }
 
   // ────────────── 승/패 ──────────────
@@ -778,5 +613,12 @@ export class GameScene extends Phaser.Scene {
         coinsEarned: this.coinsEarned, gemsEarned: bonusGems,
       });
     });
+  }
+
+  // TowerSlot에서 빌드 완료 시 호출
+  onTowerBuilt(slot) {
+    if (slot.tower && !this.towers.includes(slot.tower)) {
+      this.towers.push(slot.tower);
+    }
   }
 }
