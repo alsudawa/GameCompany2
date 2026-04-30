@@ -75,7 +75,12 @@ export class Enemy extends Phaser.GameObjects.Container {
 
     const p = pathPosition(this.path, 0);
     this.setPosition(p.x, p.y);
-    this.body.setRotation(p.angle + Math.PI / 2);
+    if (cfg.anim) {
+      this.body.setRotation(0);
+      this.body.setFlipX(Math.cos(p.angle) < 0);
+    } else {
+      this.body.setRotation(p.angle + Math.PI / 2);
+    }
     this.setAlpha(0).setScale(0.6);
     this.setVisible(true).setActive(true);
     this.scene.tweens.add({
@@ -97,7 +102,11 @@ export class Enemy extends Phaser.GameObjects.Container {
     const p = pathPosition(this.path, this.t);
     this.x = p.x;
     this.y = p.y;
-    this.body.setRotation(p.angle + Math.PI / 2);
+    if (this.body.anims?.isPlaying) {
+      this.body.setFlipX(Math.cos(p.angle) < 0);
+    } else {
+      this.body.setRotation(p.angle + Math.PI / 2);
+    }
     if (p.done) {
       this.alive = false;
       this.setVisible(false).setActive(false);
