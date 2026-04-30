@@ -17,8 +17,11 @@ export class BootScene extends Phaser.Scene {
       spacing: 0,
     });
 
+    // Gemini-generated walk strips (4 frames @ 64×64)
+    this.load.spritesheet('king_walk',    'assets/sheets/king_walk.png',    { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('soldier_walk', 'assets/sheets/soldier_walk.png', { frameWidth: 64, frameHeight: 64 });
+
     // Kenney Top-Down Shooter — 캐릭터 스프라이트
-    this.load.image('king',     'assets/chars/king.png');
     this.load.image('zombie',   'assets/chars/zombie.png');
     this.load.image('zombie2',  'assets/chars/zombie_stand.png');
     this.load.image('robot',    'assets/chars/robot.png');
@@ -39,6 +42,23 @@ export class BootScene extends Phaser.Scene {
   async create() {
     Analytics.enableDebug(true);
     Analytics.track('boot', { game: 'king-shot-td' });
+
+    if (!this.anims.exists('king_walk')) {
+      this.anims.create({
+        key: 'king_walk',
+        frames: this.anims.generateFrameNumbers('king_walk', { start: 0, end: 3 }),
+        frameRate: 8,
+        repeat: -1,
+      });
+    }
+    if (!this.anims.exists('soldier_walk')) {
+      this.anims.create({
+        key: 'soldier_walk',
+        frames: this.anims.generateFrameNumbers('soldier_walk', { start: 0, end: 3 }),
+        frameRate: 7,
+        repeat: -1,
+      });
+    }
 
     // 프로필
     const profile = Storage.load();

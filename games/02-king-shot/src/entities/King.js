@@ -21,7 +21,8 @@ export class King extends Phaser.GameObjects.Container {
     this.shadow = scene.add.ellipse(0, 14, 38, 11, 0x000000, 0.45);
     this.cape   = scene.add.graphics();
     this.bodyGroup = scene.add.container(0, 0);
-    this.body   = scene.add.image(0, 0, 'king').setScale(0.6);
+    this.body   = scene.add.sprite(0, 0, 'king_walk', 0).setScale(0.6);
+    this.body.play('king_walk');
     this.bow    = scene.add.graphics();
     this.bowDrawProgress = 0.85;
     this.drawBow();
@@ -30,6 +31,8 @@ export class King extends Phaser.GameObjects.Container {
     this.crown  = scene.add.graphics();
     this.glow   = scene.add.graphics();
     this.add([this.shadow, this.cape, this.bodyGroup, this.crown, this.glow]);
+    this.cape.setVisible(false);
+    this.crown.setVisible(false);
 
     this.maxHp = 5;
     this.hp = 5;

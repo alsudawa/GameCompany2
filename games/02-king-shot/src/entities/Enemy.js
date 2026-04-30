@@ -17,7 +17,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     scene.add.existing(this);
 
     this.shadow = scene.add.ellipse(0, 12, 36, 10, 0x000000, 0.45);
-    this.body   = scene.add.image(0, 0, 'zombie').setScale(0.5);
+    this.body   = scene.add.sprite(0, 0, 'zombie').setScale(0.5);
     this.hpBg   = scene.add.rectangle(0, -22, 30, 4, 0x000000, 0.7);
     this.hpFill = scene.add.rectangle(0, -22, 30, 4, 0xff5050, 1);
     this.hpFill.setOrigin(0, 0.5);
@@ -53,7 +53,13 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.scoreVal = cfg.score;
     this.slowUntil = 0;
 
-    this.body.setTexture(cfg.sprite ?? 'zombie');
+    const spriteKey = cfg.sprite ?? 'zombie';
+    if (cfg.anim && this.scene.anims.exists(cfg.anim)) {
+      this.body.play({ key: cfg.anim, startFrame: Math.floor(Math.random() * 4) });
+    } else {
+      this.body.stop?.();
+      this.body.setTexture(spriteKey);
+    }
     this.body.setTint(TINT_FOR[kind] ?? 0xffffff);
     const sc = (cfg.scale ?? 0.55);
     this.body.setScale(sc);
