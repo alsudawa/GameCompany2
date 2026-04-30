@@ -104,15 +104,17 @@ export class GameScene extends Phaser.Scene {
     this.isPlaying = false;
     this.isOver = false;
 
-    // 8) 입력 — 자유 2D 드래그
+    // 8) 입력 — 탭한 위치로 이동 (릴리즈해도 유지)
     this.input.on('pointerdown', (p) => this.onPointer(p));
     this.input.on('pointermove', (p) => { if (p.isDown) this.onPointer(p); });
-    const release = () => this.king.clearDragTarget();
-    this.input.on('pointerup', release);
-    this.input.on('pointerupoutside', release);
+    // pointerup 시에는 dragTarget을 유지 — 영웅이 도착할 때까지 이동.
+    // (King.update가 도착 시 자동으로 dragTarget=null로 정리)
 
     // 9) HUD
     this.drawHud();
+
+    // 10) 첫 슬롯만 unlock (순차 잠금 해제)
+    if (this.slots.length > 0) this.slots[0].unlock();
 
     Audio.playBgm('stage_dawn', { fadeIn: 0.6, volume: 0.55 });
     this.runCountdown();
@@ -189,8 +191,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 영웅 자동 사격
+    // 영웅 조준/사격 — 매 프레임 본체 회전을 위해 setAim
     const target = this.findFireTarget();
+    this.king.setAim(target);
     this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w));
 
     // 타워
@@ -615,10 +618,19 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // TowerSlot에서 빌드 완료 시 호출
+  // TowerSlot에서 빌드 완료 시 호출 — 다음 슬롯 자동 잠금 해제.
   onTowerBuilt(slot) {
     if (slot.tower && !this.towers.includes(slot.tower)) {
       this.towers.push(slot.tower);
+    }
+    Juice.popText(this, slot.x, slot.y - 30, 'TOWER!',
+      { color: 0xf4c542, size: 16, rise: 30, duration: 600 });
+    const idx = this.slots.indexOf(slot);
+    if (idx >= 0 && idx + 1 < this.slots.length) {
+      const next = this.slots[idx + 1];
+      this.scene.scene && next.unlock();
+      // 작은 안내 화살표
+      Juice.ring(this, next.x, next.y, { color: 0xf4c542, radius: 60, duration: 480 });
     }
   }
 }
