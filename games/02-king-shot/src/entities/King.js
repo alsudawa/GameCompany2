@@ -1,4 +1,4 @@
-// King — 영웅 왕. Kenney soldier 스프라이트 + 왕관/망토 오버레이 + 자유 2D 이동 + 자동 사격.
+// King — 영웅 왕. 자유 2D 이동 + 조준 회전(매 프레임) + 활 시위 끌리는 모션.
 
 import { COLORS } from '../config.js';
 
@@ -18,18 +18,25 @@ export class King extends Phaser.GameObjects.Container {
     super(scene, 0, 0);
     scene.add.existing(this);
 
-    this.shadow = scene.add.ellipse(0, 14, 36, 11, 0x000000, 0.45);
+    this.shadow = scene.add.ellipse(0, 14, 38, 11, 0x000000, 0.45);
     this.cape   = scene.add.graphics();
+    this.bodyGroup = scene.add.container(0, 0);
     this.body   = scene.add.image(0, 0, 'king').setScale(0.6);
+    this.bow    = scene.add.graphics();
+    this.bowDrawProgress = 0.85;
+    this.drawBow();
+    this.bodyGroup.add([this.body, this.bow]);
+
     this.crown  = scene.add.graphics();
     this.glow   = scene.add.graphics();
-    this.add([this.shadow, this.cape, this.body, this.crown, this.glow]);
+    this.add([this.shadow, this.cape, this.bodyGroup, this.crown, this.glow]);
 
     this.maxHp = 5;
     this.hp = 5;
     this.invulnUntil = 0;
     this.fireCooldown = 0;
     this.aimAngle = -Math.PI / 2;
+    this._haveAim = false;
     this.dragTarget = null;
     this.moveSpeed = 280;
     this.weapon = { ...WEAPON_BASE };
@@ -58,17 +65,13 @@ export class King extends Phaser.GameObjects.Container {
     const top = -2, bot = 16, topW = 16, botW = 26;
     g.fillStyle(COLORS.capeRedDk, 1);
     g.fillPoints([
-      { x: -topW / 2 - 1, y: top + 1 },
-      { x:  topW / 2 + 1, y: top + 1 },
-      { x:  botW / 2 + 1, y: bot + 1 },
-      { x: -botW / 2 - 1, y: bot + 1 },
+      { x: -topW / 2 - 1, y: top + 1 }, { x:  topW / 2 + 1, y: top + 1 },
+      { x:  botW / 2 + 1, y: bot + 1 }, { x: -botW / 2 - 1, y: bot + 1 },
     ], true);
     g.fillStyle(COLORS.capeRed, 1);
     g.fillPoints([
-      { x: -topW / 2, y: top },
-      { x:  topW / 2, y: top },
-      { x:  botW / 2, y: bot },
-      { x: -botW / 2, y: bot },
+      { x: -topW / 2, y: top }, { x:  topW / 2, y: top },
+      { x:  botW / 2, y: bot }, { x: -botW / 2, y: bot },
     ], true);
     g.fillStyle(COLORS.goldHud, 1);
     g.fillRect(-botW / 2, bot - 3, botW, 2);
@@ -95,22 +98,89 @@ export class King extends Phaser.GameObjects.Container {
     c.fillCircle( baseW / 4, 2.5, 1.1);
   }
 
+  // 활 — bodyGroup 좌표계, 조준 방향(-y) 앞쪽에 위치.
+  drawBow() {
+    const b = this.bow;
+    b.clear();
+    const ax = 0, ay = -16;
+    const bend = 4 - 3 * this.bowDrawProgress;
+    // 활대
+    b.lineStyle(3, COLORS.woodDark, 1);
+    b.beginPath();
+    b.moveTo(ax - 8, ay - bend); b.lineTo(ax, ay - 14); b.lineTo(ax + 8, ay - bend);
+    b.strokePath();
+    b.lineStyle(2, COLORS.woodBrown, 1);
+    b.beginPath();
+    b.moveTo(ax - 8, ay - bend); b.lineTo(ax, ay - 14); b.lineTo(ax + 8, ay - bend);
+    b.strokePath();
+    // 시위
+    const stringPull = 5 * this.bowDrawProgress;
+    b.lineStyle(1, 0xeae0c4, 0.9);
+    b.beginPath();
+    b.moveTo(ax - 8, ay - bend);
+    b.lineTo(ax, ay - 8 + stringPull);
+    b.lineTo(ax + 8, ay - bend);
+    b.strokePath();
+    // 골드 그립
+    b.fillStyle(COLORS.goldHud, 1);
+    b.fillCircle(ax, ay - 10, 1.5);
+    // 화살 (당김 중일 때만)
+    if (this.bowDrawProgress > 0.2) {
+      b.fillStyle(COLORS.woodBrown, 1);
+      b.fillRect(ax - 0.7, ay - 12 + stringPull, 1.4, 8 - stringPull);
+      b.fillStyle(0xc0c8d0, 1);
+      b.fillTriangle(ax - 1.5, ay - 13 + stringPull, ax + 1.5, ay - 13 + stringPull, ax, ay - 16 + stringPull);
+    }
+  }
+
+  setBowDraw(p) {
+    this.bowDrawProgress = Phaser.Math.Clamp(p, 0, 1);
+    this.drawBow();
+  }
+
   setDragTarget(x, y) { this.dragTarget = { x, y }; }
   clearDragTarget() { this.dragTarget = null; }
 
   update(dt) {
+    let movingDir = null;
     if (this.dragTarget) {
       const dx = this.dragTarget.x - this.x;
       const dy = this.dragTarget.y - this.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > 1) {
+      if (dist > 2) {
         const step = Math.min(dist, this.moveSpeed * dt);
         this.x += (dx / dist) * step;
         this.y += (dy / dist) * step;
+        movingDir = Math.atan2(dy, dx);
+      } else {
+        this.dragTarget = null;     // 도착 → 자동 정지
       }
     }
     if (this.fireCooldown > 0) this.fireCooldown -= dt;
-    this.body.setRotation(this.aimAngle + Math.PI / 2);
+
+    // bodyGroup 회전: 조준 우선, 없으면 이동 방향, 둘 다 없으면 기본 위쪽
+    let rot;
+    if (this._haveAim) rot = this.aimAngle;
+    else if (movingDir != null) rot = movingDir;
+    else rot = -Math.PI / 2;
+    this.bodyGroup.setRotation(rot + Math.PI / 2);
+
+    // 활 시위 진행도: fireCooldown 진행에 따라 0 → 1
+    if (this._haveAim) {
+      const p = this.fireCooldown <= 0
+        ? 0.85
+        : 1 - this.fireCooldown / this.weapon.fireRate;
+      this.setBowDraw(p);
+    } else {
+      this.setBowDraw(0.5);   // 대기 자세
+    }
+  }
+
+  // 매 프레임 GameScene이 갱신
+  setAim(target) {
+    if (!target) { this._haveAim = false; return; }
+    this._haveAim = true;
+    this.aimAngle = Math.atan2(target.y - this.y, target.x - this.x);
   }
 
   tryFire(target, fireFn) {
@@ -128,13 +198,19 @@ export class King extends Phaser.GameObjects.Container {
     for (let i = 0; i < ms; i++) {
       const t = ms === 1 ? 0 : (i / (ms - 1) - 0.5) * 2;
       const a = ang + t * spread;
-      fireFn(this.x + Math.cos(a) * 14, this.y + Math.sin(a) * 14, a, this.weapon);
+      fireFn(this.x + Math.cos(a) * 18, this.y + Math.sin(a) * 18, a, this.weapon);
     }
     this.playFireFx(ang);
     return true;
   }
 
   playFireFx(angle) {
+    // 활 시위 풀림 → 다시 당김
+    this.scene.tweens.add({
+      targets: { v: 1 }, v: 0,
+      duration: 80, ease: 'Cubic.Out',
+      onUpdate: tw => this.setBowDraw(tw.getValue()),
+    });
     const ox = -Math.cos(angle) * 2;
     const oy = -Math.sin(angle) * 2;
     this.scene.tweens.add({

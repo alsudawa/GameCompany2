@@ -10,12 +10,17 @@ const config = {
   type: Phaser.AUTO,
   parent: 'game-root',
   backgroundColor: '#3a7d44',
-  pixelArt: false,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME.width,
     height: GAME.height,
+    resolution: window.devicePixelRatio || 1,
+  },
+  render: {
+    pixelArt: false,
+    antialias: true,
+    roundPixels: true,
   },
   input: { activePointers: 4 },
   scene: [BootScene, MenuScene, GameScene, ResultScene],
