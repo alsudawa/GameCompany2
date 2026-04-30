@@ -227,9 +227,9 @@ export class MenuScene extends Phaser.Scene {
     c.add(bestT);
   }
 
-  // 미니 프리뷰: 5 웨이브 + 패드 마커 (아레나 형식).
+  // 미니 프리뷰: 실제 경로 + 타워 슬롯.
   drawMiniPreview(parent, cx, cy, level) {
-    const w = 240, h = 60;
+    const w = 240, h = 70;
     const bg = this.add.graphics();
     const groundCol = (level.groundTint && level.groundTint !== 0xffffff)
       ? level.groundTint : 0x3a7d44;
@@ -239,29 +239,36 @@ export class MenuScene extends Phaser.Scene {
     bg.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, 4);
     parent.add(bg);
 
-    // 웨이브 5개를 가로로 배치
-    const waves = level.waves ?? [];
-    waves.forEach((wave, i) => {
-      const t = (i + 0.5) / waves.length;
-      const px = cx - w / 2 + 6 + (w - 12) * t;
-      const isBoss = (wave.label && wave.label.toLowerCase().includes('boss')) ||
-                     (wave.spawn && wave.spawn.some(([k]) => k === 'boss'));
-      // 웨이브 점 (보스는 큰 빨간 + 골드 외곽)
-      if (isBoss) {
-        const m = this.add.circle(px, cy + 4, 5, 0xc8302d, 0.95);
-        m.setStrokeStyle(2, COLORS.goldHud, 1);
-        parent.add(m);
-      } else {
-        const m = this.add.circle(px, cy + 4, 3, 0xc8302d, 0.85);
-        parent.add(m);
-      }
-      // 패드 마커 (해당 웨이브에 패드 있으면 위쪽에 골드 점)
-      if (wave.pads && wave.pads.length > 0) {
-        const pm = this.add.circle(px, cy - 10, 3, COLORS.goldHud, 1);
-        pm.setStrokeStyle(1, COLORS.woodDark, 1);
-        parent.add(pm);
-      }
-    });
+    if (!level.pathWaypoints) return;
+    const sx = w / level.cols;
+    const sy = h / level.rows;
+    const path = level.pathWaypoints;
+    // 경로
+    bg.lineStyle(4, COLORS.woodBrown, 1);
+    bg.beginPath();
+    for (let i = 0; i < path.length; i++) {
+      const [c, r] = path[i];
+      const px = cx - w / 2 + (c + 0.5) * sx;
+      const py = cy - h / 2 + (r + 0.5) * sy;
+      if (i === 0) bg.moveTo(px, py);
+      else bg.lineTo(px, py);
+    }
+    bg.strokePath();
+    // 타워 슬롯 점
+    for (const [c, r] of (level.towerSlots ?? [])) {
+      const px = cx - w / 2 + (c + 0.5) * sx;
+      const py = cy - h / 2 + (r + 0.5) * sy;
+      const dot = this.add.circle(px, py, 1.5, COLORS.goldHud, 0.95);
+      parent.add(dot);
+    }
+    // 왕좌 위치 (작은 적색 마크)
+    if (level.throne) {
+      const tx = cx - w / 2 + (level.throne.col + 0.5) * sx;
+      const ty = cy - h / 2 + (level.throne.row + 0.5) * sy;
+      const t = this.add.circle(tx, ty, 4, COLORS.capeRed, 1);
+      t.setStrokeStyle(1.5, COLORS.goldHud, 1);
+      parent.add(t);
+    }
   }
 
   makeStartButton(cx, cy) {
