@@ -3,7 +3,7 @@
 import { COLORS, FONT, KEY, TILE } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Storage } from '../../../../shared/storage.js';
-import { STAGES } from '../maps/index.js';
+import { LEVELS } from '../maps/index.js';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super('MenuScene'); }
@@ -67,8 +67,8 @@ export class MenuScene extends Phaser.Scene {
     // 페이지 인디케이터
     this.indicators = [];
     const indY = 540;
-    STAGES.forEach((_, i) => {
-      const dx = width / 2 + (i - (STAGES.length - 1) / 2) * 18;
+    LEVELS.forEach((_, i) => {
+      const dx = width / 2 + (i - (LEVELS.length - 1) / 2) * 18;
       const c = this.add.circle(dx, indY, 4, 0xd9c897, 0.5).setDepth(4);
       this.indicators.push(c);
     });
@@ -128,7 +128,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   changeStage(delta) {
-    this.stageIdx = (this.stageIdx + delta + STAGES.length) % STAGES.length;
+    this.stageIdx = (this.stageIdx + delta + LEVELS.length) % LEVELS.length;
     this.tweens.add({
       targets: this.cardContainer,
       x: this.cardCenter.x - delta * 60, alpha: 0,
@@ -157,7 +157,7 @@ export class MenuScene extends Phaser.Scene {
   drawStageCard() {
     const c = this.cardContainer;
     c.removeAll(true);
-    const stage = STAGES[this.stageIdx];
+    const stage = LEVELS[this.stageIdx];
     const w = 300, h = 220;
 
     // 그림자
@@ -227,41 +227,48 @@ export class MenuScene extends Phaser.Scene {
     c.add(bestT);
   }
 
-  // 작은 맵 미리보기 (잔디 + 길 폴리라인)
-  drawMiniPreview(parent, cx, cy, stage) {
+  // 미니 프리뷰: 세로 진행 + 이벤트 마커.
+  drawMiniPreview(parent, cx, cy, level) {
     const w = 240, h = 60;
     const bg = this.add.graphics();
-    bg.fillStyle(0x3a7d44, 1);
-    if (stage.groundTint && stage.groundTint !== 0xffffff) {
-      // 살짝 타이트 표현
-      bg.fillStyle(stage.groundTint, 1);
-    }
+    const groundCol = (level.groundTint && level.groundTint !== 0xffffff)
+      ? level.groundTint : 0x3a7d44;
+    bg.fillStyle(groundCol, 1);
     bg.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, 4);
     bg.lineStyle(1.5, COLORS.woodDark, 0.7);
     bg.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, 4);
 
-    // 경로 폴리라인 (스테이지 비율로 축소)
-    const sx = w / stage.cols;
-    const sy = h / stage.rows;
-    const path = stage.pathWaypoints;
-    bg.lineStyle(4, COLORS.woodBrown, 1);
+    // 가운데 길 (가로형으로 축소)
+    bg.lineStyle(5, COLORS.woodBrown, 1);
     bg.beginPath();
-    for (let i = 0; i < path.length; i++) {
-      const [c, r] = path[i];
-      const px = cx - w / 2 + (c + 0.5) * sx;
-      const py = cy - h / 2 + (r + 0.5) * sy;
-      if (i === 0) bg.moveTo(px, py);
-      else bg.lineTo(px, py);
-    }
+    bg.moveTo(cx - w / 2 + 6, cy);
+    bg.lineTo(cx + w / 2 - 6, cy);
+    bg.strokePath();
+    bg.lineStyle(2, 0xb87a4a, 0.7);
+    bg.beginPath();
+    bg.moveTo(cx - w / 2 + 6, cy);
+    bg.lineTo(cx + w / 2 - 6, cy);
     bg.strokePath();
     parent.add(bg);
 
-    // 슬롯 점
-    for (const [c, r] of stage.towerSlots) {
-      const px = cx - w / 2 + (c + 0.5) * sx;
-      const py = cy - h / 2 + (r + 0.5) * sy;
-      const dot = this.add.circle(px, py, 1.5, COLORS.goldHud, 0.95);
-      parent.add(dot);
+    // 이벤트 마커 (gate=세로 막대, spawn=빨간 점, boss=큰 빨간 점)
+    const len = level.length;
+    for (const ev of level.events) {
+      const t = ev.y / len;
+      const px = cx - w / 2 + 6 + (w - 12) * t;
+      if (ev.kind === 'gate') {
+        const m = this.add.graphics();
+        m.fillStyle(COLORS.goldHud, 0.95);
+        m.fillRect(px - 1, cy - 12, 2, 24);
+        parent.add(m);
+      } else if (ev.kind === 'spawn') {
+        const m = this.add.circle(px, cy, 2, 0xc8302d, 0.9);
+        parent.add(m);
+      } else if (ev.kind === 'boss') {
+        const m = this.add.circle(px, cy, 5, 0xc8302d, 0.95);
+        m.setStrokeStyle(2, COLORS.goldHud, 1);
+        parent.add(m);
+      }
     }
   }
 
@@ -295,10 +302,10 @@ export class MenuScene extends Phaser.Scene {
     c.on('pointerout',  () => this.tweens.add({ targets: c, scale: 1, duration: 140 }));
     c.on('pointerdown', () => {
       Audio.purchase();
-      const stage = STAGES[this.stageIdx];
+      const stage = LEVELS[this.stageIdx];
       this.cameras.main.fadeOut(280, 0, 0, 0);
       this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.start('GameScene', { stageId: stage.id });
+        this.scene.start('GameScene', { levelId: stage.id });
       });
     });
     this.tweens.add({
