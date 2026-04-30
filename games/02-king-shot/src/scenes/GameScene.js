@@ -44,6 +44,7 @@ export class GameScene extends Phaser.Scene {
     this.drawGround(width, height);
     this.drawPath();
     this.drawDecorations();
+    this.drawAtmosphere(width, height);
 
     // 2) 경로
     this.path = buildPath(this.level.pathWaypoints);
@@ -343,6 +344,69 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // 분위기 — 떠다니는 입자 + 비네트
+  drawAtmosphere(width, height) {
+    // 비네트 (가장자리 어둡게) — 짙은 라디얼 그라디언트 흉내
+    const v = this.add.graphics().setDepth(95);
+    v.fillStyle(0x000000, 0);
+    v.fillRect(0, 0, width, height);
+    v.fillStyle(0x000000, 0.25);
+    [
+      { x: 0, y: 0, w: width, h: 70 },
+      { x: 0, y: height - 70, w: width, h: 70 },
+      { x: 0, y: 0, w: 50, h: height },
+      { x: width - 50, y: 0, w: 50, h: height },
+    ].forEach(r => v.fillRect(r.x, r.y, r.w, r.h));
+    v.fillStyle(0x000000, 0.12);
+    [
+      { x: 0, y: 0, w: width, h: 110 },
+      { x: 0, y: height - 110, w: width, h: 110 },
+      { x: 0, y: 0, w: 90, h: height },
+      { x: width - 90, y: 0, w: 90, h: height },
+    ].forEach(r => v.fillRect(r.x, r.y, r.w, r.h));
+
+    // 떠다니는 입자 (잎사귀/먼지)
+    this.atmoParticles = this.add.group();
+    this.time.addEvent({
+      delay: 320,
+      loop: true,
+      callback: () => this.spawnAtmoParticle(width, height),
+    });
+    // 처음 30개 미리 생성
+    for (let i = 0; i < 14; i++) this.spawnAtmoParticle(width, height, true);
+  }
+
+  spawnAtmoParticle(width, height, immediate = false) {
+    const stage = this.level.id;
+    const kind = (stage === 'pass') ? 'snow'
+              : (stage === 'crypt') ? 'ember'
+              : (stage === 'forest') ? 'leaf'
+              : 'dust';
+    const colors = { dust: 0xfff5d8, leaf: 0xa86840, snow: 0xffffff, ember: 0xff8a3a };
+    const col = colors[kind];
+    const x = Math.random() * width;
+    const y = immediate ? Math.random() * height : -10;
+    const p = this.add.circle(x, y, kind === 'snow' ? 2 : 1.5, col, 0.7).setDepth(22);
+    if (kind === 'ember') p.setBlendMode(Phaser.BlendModes.ADD);
+    this.atmoParticles.add(p);
+    const dur = 6000 + Math.random() * 4000;
+    const sway = (Math.random() - 0.5) * 60;
+    this.tweens.add({
+      targets: p,
+      y: height + 10,
+      x: x + sway,
+      alpha: { from: 0.7, to: 0.1 },
+      duration: dur,
+      ease: 'Linear',
+      onComplete: () => p.destroy(),
+    });
+    this.tweens.add({
+      targets: p, angle: { from: 0, to: 360 },
+      duration: 1200 + Math.random() * 1200,
+      repeat: -1,
+    });
+  }
+
   // ────────────── 웨이브 (자동) ──────────────
   startNextWave() {
     if (this.waveActive) return;
@@ -519,31 +583,59 @@ export class GameScene extends Phaser.Scene {
   // ────────────── HUD ──────────────
   drawHud() {
     const { width } = this.scale;
-    const bar = this.add.graphics().setDepth(100);
-    bar.fillStyle(0x000000, 0.55);
-    bar.fillRect(0, 0, width, 50);
-    bar.fillStyle(COLORS.goldHud, 0.6);
-    bar.fillRect(0, 48, width, 2);
+    // 양피지 풀-너비 패널
+    const h = 54;
+    const panel = this.add.graphics().setDepth(100);
+    panel.fillStyle(0x000000, 0.55);
+    panel.fillRect(0, h, width, 4);
+    panel.fillStyle(COLORS.woodDark, 1);
+    panel.fillRect(0, 0, width, h);
+    panel.fillStyle(COLORS.parchment, 0.96);
+    panel.fillRect(4, 4, width - 8, h - 8);
+    panel.fillStyle(COLORS.goldHud, 0.7);
+    panel.fillRect(4, h - 6, width - 8, 2);
+    panel.fillStyle(COLORS.parchmentDim, 0.4);
+    panel.fillRect(4, 4, width - 8, 4);
+    // 모서리 골드 못
+    panel.fillStyle(COLORS.goldDeep, 1);
+    [[10, 10], [width - 10, 10], [10, h - 10], [width - 10, h - 10]]
+      .forEach(([px, py]) => {
+        panel.fillCircle(px, py, 2.5);
+        panel.fillStyle(COLORS.goldHud, 1);
+        panel.fillCircle(px, py, 1.5);
+        panel.fillStyle(COLORS.goldDeep, 1);
+      });
 
-    this.add.image(20, 25, KEY.tilesheet, TILE.COIN_GOLD)
-      .setScale(0.45).setDepth(101);
-    this.hudCoins = this.add.text(38, 16, '0', {
+    // 좌측: 코인 아이콘 + 카운트
+    const coinIcon = this.add.graphics().setDepth(101);
+    const cx = 20, cy = 28;
+    coinIcon.fillStyle(COLORS.goldDeep, 1);
+    coinIcon.fillCircle(cx + 1, cy + 1, 9);
+    coinIcon.fillStyle(0xffd24a, 1);
+    coinIcon.fillCircle(cx, cy, 8);
+    coinIcon.fillStyle(COLORS.goldDeep, 1);
+    coinIcon.fillCircle(cx, cy, 4);
+    coinIcon.fillStyle(0xffffff, 0.8);
+    coinIcon.fillCircle(cx - 2, cy - 2, 1.2);
+    this.hudCoins = this.add.text(34, 18, '0', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(0, 0).setDepth(101);
 
-    this.add.text(width / 2, 8, this.level.name, {
+    // 중앙: STAGE 이름 + 웨이브
+    this.add.text(width / 2, 6, this.level.name, {
       fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-      color: '#d9c897',
+      color: '#5a3e2e',
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(3);
-    this.hudWave = this.add.text(width / 2, 22, '...', {
+    this.hudWave = this.add.text(width / 2, 20, '...', {
       fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
-      color: '#f0e6d0', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(2);
 
-    this.hudHp = this.add.text(width - 20, 16, '♥ 5', {
+    // 우측: 영웅 HP (♥)
+    this.hudHp = this.add.text(width - 20, 18, '♥ 5', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
-      color: '#ff6b6b', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#c8302d', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(1, 0).setDepth(101);
 
     this.updateHud();

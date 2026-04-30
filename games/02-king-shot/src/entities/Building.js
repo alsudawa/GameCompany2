@@ -44,65 +44,103 @@ export class Building extends Phaser.GameObjects.Container {
     const g = this.gate;
     g.clear();
     const stage = this.evolveStage;
-    const wExtra = stage * 6;
-    const hExtra = stage * 3;
-    const w = 84 + wExtra;
-    const h = 34 + hExtra;
-    const baseY = -10 - hExtra;
+    const wExtra = stage * 8;
+    const hExtra = stage * 4;
+    const w = 96 + wExtra;
+    const h = 40 + hExtra;
+    const baseY = -12 - hExtra;
 
     // 그림자
-    g.fillStyle(0x000000, 0.5);
-    g.fillRect(-w / 2 - 2, baseY + 2, w + 4, h + 4);
-    // 본체 돌
-    g.fillStyle(0x6e6e76, 1);
+    g.fillStyle(0x000000, 0.55);
+    g.fillRect(-w / 2 - 3, baseY + 3, w + 6, h + 6);
+    // 외곽 짙은 돌
+    g.fillStyle(0x3a3d42, 1);
     g.fillRect(-w / 2, baseY, w, h);
+    // 본체 돌 (그라디언트 흉내 — 가로 띠 분리)
+    g.fillStyle(0x6e6e76, 1);
+    g.fillRect(-w / 2 + 2, baseY + 2, w - 4, h - 4);
+    g.fillStyle(0x8a8e96, 1);
+    g.fillRect(-w / 2 + 2, baseY + 2, w - 4, 8);
     g.fillStyle(0x4a4d52, 1);
-    g.fillRect(-w / 2, baseY, w, 6);
-    // 시임
-    g.lineStyle(1.5, 0x3a3d42, 0.85);
-    const cols = 5 + stage;
+    g.fillRect(-w / 2 + 2, baseY + h - 8, w - 4, 6);
+    // 수직 시임
+    g.lineStyle(1.5, 0x2a2d32, 0.7);
+    const cols = 6 + stage;
     for (let i = 1; i < cols; i++) {
       const x = -w / 2 + (w * i) / cols;
       g.beginPath();
-      g.moveTo(x, baseY); g.lineTo(x, baseY + h);
+      g.moveTo(x, baseY + 2); g.lineTo(x, baseY + h - 4);
       g.strokePath();
     }
+    // 수평 시임 두 줄
+    g.lineStyle(1.5, 0x2a2d32, 0.7);
     g.beginPath();
-    g.moveTo(-w / 2, baseY + 18); g.lineTo(w / 2, baseY + 18);
+    g.moveTo(-w / 2 + 2, baseY + 18); g.lineTo(w / 2 - 2, baseY + 18);
     g.strokePath();
-    // 정문 아치
-    g.fillStyle(0x2a1a0a, 1);
-    g.fillRoundedRect(-18, baseY + 14, 36, h - 14, { tl: 14, tr: 14, bl: 0, br: 0 });
-    // 톱니 (왕관형 미늘)
-    g.fillStyle(0x6e6e76, 1);
-    const teethCount = 6 + stage * 2;
+
+    // 정문 아치 (어두운)
+    g.fillStyle(0x1a0a04, 1);
+    g.fillRoundedRect(-22, baseY + 16, 44, h - 16, { tl: 18, tr: 18, bl: 0, br: 0 });
+    g.fillStyle(0x3e2e1e, 1);
+    g.fillRoundedRect(-20, baseY + 18, 40, h - 18, { tl: 16, tr: 16, bl: 0, br: 0 });
+    // 문짝 골드 못
+    g.fillStyle(COLORS.goldDeep, 1);
+    [-10, 10].forEach(x => {
+      [baseY + 24, baseY + h - 8].forEach(y => g.fillCircle(x, y, 1.6));
+    });
+
+    // 위쪽 톱니 (왕관형 미늘)
+    g.fillStyle(0x3a3d42, 1);
+    const teethCount = 7 + stage * 2;
+    const teethW = 10;
     for (let i = 0; i < teethCount; i++) {
-      const tx = -w / 2 + 4 + (i * (w - 8)) / (teethCount - 1);
-      g.fillRect(tx - 4, baseY - 8, 8, 8);
+      const tx = -w / 2 + 4 + (i * (w - 8 - teethW)) / (teethCount - 1);
+      g.fillRect(tx, baseY - 10, teethW - 2, 10);
     }
-    // 진화: stage>=1 골드 트림
+    g.fillStyle(0x6e6e76, 1);
+    for (let i = 0; i < teethCount; i++) {
+      const tx = -w / 2 + 4 + (i * (w - 8 - teethW)) / (teethCount - 1);
+      g.fillRect(tx + 1, baseY - 8, teethW - 4, 7);
+    }
+
+    // 골드 트림 (stage>=1)
     if (stage >= 1) {
       g.lineStyle(2, COLORS.goldHud, 0.9);
-      g.strokeRect(-w / 2, baseY, w, h);
+      g.strokeRect(-w / 2 + 2, baseY + 2, w - 4, h - 4);
+      g.fillStyle(COLORS.goldHud, 1);
+      g.fillRect(-w / 2 + 4, baseY + 16, w - 8, 2);
     }
-    // stage>=2 횃불
+
+    // 횃불 (stage>=2) — 양옆
     if (stage >= 2) {
-      [-w / 2 - 2, w / 2 + 2].forEach(tx => {
+      [-w / 2 - 4, w / 2 + 4].forEach(tx => {
+        // 봉
         g.fillStyle(0x3e2e1e, 1);
-        g.fillRect(tx - 1, baseY + 6, 2, 14);
+        g.fillRect(tx - 1.2, baseY + 4, 2.4, 18);
+        // 그릇
+        g.fillStyle(COLORS.goldHud, 1);
+        g.fillTriangle(tx - 4, baseY + 4, tx + 4, baseY + 4, tx, baseY + 12);
+        // 불꽃
+        g.fillStyle(0xff4a2a, 1);
+        g.fillCircle(tx, baseY - 1, 5);
         g.fillStyle(0xff8a3a, 1);
-        g.fillCircle(tx, baseY + 4, 4);
-        g.fillStyle(0xfff080, 0.85);
-        g.fillCircle(tx, baseY + 3, 2.2);
+        g.fillCircle(tx, baseY - 2, 3.5);
+        g.fillStyle(0xffd060, 0.95);
+        g.fillCircle(tx, baseY - 3, 2);
       });
     }
-    // stage>=3 추가 깃대 두 개 (옆쪽 큰 깃발)
+
+    // 큰 깃발 (stage>=3) — 양옆 위로 솟음
     if (stage >= 3) {
-      [-w / 2 + 6, w / 2 - 6].forEach(tx => {
+      [-w / 2 + 8, w / 2 - 8].forEach(tx => {
+        g.fillStyle(0x3e2e1e, 1);
+        g.fillRect(tx - 1, baseY - 26, 2, 18);
         g.fillStyle(COLORS.capeRedDk, 1);
-        g.fillRect(tx - 1, baseY - 18, 2, 14);
+        g.fillTriangle(tx + 1, baseY - 26, tx + 14, baseY - 21, tx + 1, baseY - 16);
         g.fillStyle(COLORS.capeRed, 1);
-        g.fillTriangle(tx + 1, baseY - 18, tx + 10, baseY - 14, tx + 1, baseY - 10);
+        g.fillTriangle(tx + 2, baseY - 25, tx + 12, baseY - 21, tx + 2, baseY - 17);
+        g.fillStyle(COLORS.goldHud, 1);
+        g.fillCircle(tx, baseY - 26, 1.6);
       });
     }
   }
