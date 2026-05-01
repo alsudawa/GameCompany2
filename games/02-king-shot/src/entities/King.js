@@ -6,10 +6,10 @@ const RADIUS = 14;
 
 const WEAPON_BASE = {
   damage: 10,
-  fireRate: 0.40,
-  projectileSpeed: 580,
+  fireRate: 0.22,        // 더 빠른 연사 — 무리를 쓸어내는 느낌
+  projectileSpeed: 640,
   multishot: 1,
-  range: 240,
+  range: 260,
   spread: 0.10,
 };
 

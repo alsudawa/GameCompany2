@@ -46,12 +46,15 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.t = 0;
     this.maxHp = Math.round(cfg.hp * hpMul);
     this.hp = this.maxHp;
-    this.baseSpeed = cfg.speed;
+    this.baseSpeed = cfg.speed * (0.92 + Math.random() * 0.16); // 살짝 다른 속도 → 무리감
     this.speed = this.baseSpeed;
     this.damage = cfg.damage;
     this.bounty = cfg.bounty;
     this.scoreVal = cfg.score;
     this.slowUntil = 0;
+    // 좌우 차선 오프셋 — 일렬이 아닌 무리로 보이게
+    const laneRange = (kind === 'boss') ? 0 : 22;
+    this.laneOffset = (Math.random() - 0.5) * 2 * laneRange;
 
     const spriteKey = cfg.sprite ?? 'zombie';
     if (cfg.anim && this.scene.anims.exists(cfg.anim)) {
@@ -100,8 +103,11 @@ export class Enemy extends Phaser.GameObjects.Container {
     }
     this.t += speed * dt;
     const p = pathPosition(this.path, this.t);
-    this.x = p.x;
-    this.y = p.y;
+    // 경로 진행 방향에 수직(perp) 차선 오프셋 적용 → 무리로 퍼져 보임
+    const perpX = -Math.sin(p.angle);
+    const perpY =  Math.cos(p.angle);
+    this.x = p.x + perpX * this.laneOffset;
+    this.y = p.y + perpY * this.laneOffset;
     if (this.body.anims?.isPlaying) {
       this.body.setFlipX(Math.cos(p.angle) < 0);
     } else {
