@@ -15,30 +15,58 @@ export class MenuScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#1a2818');
     this.cameras.main.fadeIn(280, 0, 0, 0);
 
-    // 잔디 배경 (타일)
-    this.drawGrassBackground(width, height);
+    // 메뉴 배경 — 상단(성/하늘) 일러스트 + 하단 잔디 타일
+    this.add.image(width / 2, 0, 'menu_bg').setOrigin(0.5, 0).setDepth(0);
+    this.drawGrassBackground(width, height, 480);
 
-    // 위쪽 어두운 그라디언트 비네트
-    const vg = this.add.graphics().setDepth(1);
-    vg.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.5, 0.5, 0, 0);
-    vg.fillRect(0, 0, width, 280);
+    // 일러스트 → 잔디 경계 부드러운 페이드
+    const blend = this.add.graphics().setDepth(1);
+    blend.fillGradientStyle(0x000000, 0x000000, 0x1a2818, 0x1a2818, 0, 0, 0.85, 0.85);
+    blend.fillRect(0, 460, width, 60);
 
-    // 타이틀
-    const titleShadow = this.add.text(width / 2 + 3, 100 + 3, 'KING SHOT', {
-      fontFamily: FONT.display, fontSize: '52px', fontStyle: '900',
+    // 타이틀: 가독성 위해 상단 어두운 양피지 배너
+    const bannerY = 110;
+    const bannerW = 360, bannerH = 110;
+    const banner = this.add.graphics().setDepth(2);
+    banner.fillStyle(0x000000, 0.55);
+    banner.fillRoundedRect(width / 2 - bannerW / 2 + 3, bannerY - bannerH / 2 + 4, bannerW, bannerH, 14);
+    banner.fillStyle(0x2a1810, 0.92);
+    banner.fillRoundedRect(width / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 14);
+    banner.lineStyle(3, COLORS.goldDeep, 1);
+    banner.strokeRoundedRect(width / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 14);
+    banner.lineStyle(1, COLORS.goldHud, 0.9);
+    banner.strokeRoundedRect(width / 2 - bannerW / 2 + 4, bannerY - bannerH / 2 + 4, bannerW - 8, bannerH - 8, 11);
+    banner.fillStyle(COLORS.goldHud, 1);
+    [[-bannerW / 2 + 10, -bannerH / 2 + 10], [bannerW / 2 - 10, -bannerH / 2 + 10],
+     [-bannerW / 2 + 10,  bannerH / 2 - 10], [bannerW / 2 - 10,  bannerH / 2 - 10]]
+      .forEach(([px, py]) => banner.fillCircle(width / 2 + px, bannerY + py, 3));
+
+    // 타이틀 — 더 큰 폰트 + 다층 그림자 + 글로우
+    const titleY = bannerY - 8;
+    const glow = this.add.text(width / 2, titleY, 'KING SHOT', {
+      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+      color: '#f4c542',
+    }).setOrigin(0.5).setAlpha(0.4).setDepth(2);
+    glow.setLetterSpacing?.(5);
+    this.tweens.add({
+      targets: glow, alpha: { from: 0.3, to: 0.7 },
+      duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
+    const titleShadow = this.add.text(width / 2 + 3, titleY + 4, 'KING SHOT', {
+      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
       color: '#000000',
-    }).setOrigin(0.5).setAlpha(0.6).setDepth(2);
-    titleShadow.setLetterSpacing?.(4);
-    const title = this.add.text(width / 2, 100, 'KING SHOT', {
-      fontFamily: FONT.display, fontSize: '52px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
+    }).setOrigin(0.5).setAlpha(0.7).setDepth(2);
+    titleShadow.setLetterSpacing?.(5);
+    const title = this.add.text(width / 2, titleY, 'KING SHOT', {
+      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(3);
-    title.setLetterSpacing?.(4);
+    title.setLetterSpacing?.(5);
     this.tweens.add({
       targets: title, scale: { from: 1, to: 1.04 },
       duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
-    this.add.text(width / 2, 148, 'TOWER DEFENSE', {
+    this.add.text(width / 2, titleY + 36, 'TOWER DEFENSE', {
       fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
       color: '#f4e8c8',
     }).setOrigin(0.5).setDepth(3).setLetterSpacing?.(6);
@@ -94,9 +122,9 @@ export class MenuScene extends Phaser.Scene {
     Audio.playBgm('menu', { fadeIn: 0.6, volume: 0.55 });
   }
 
-  drawGrassBackground(width, height) {
+  drawGrassBackground(width, height, startY = 0) {
     const ts = 32;
-    for (let y = 0; y < height; y += ts) {
+    for (let y = Math.floor(startY / ts) * ts; y < height; y += ts) {
       for (let x = 0; x < width; x += ts) {
         const tile = (Math.random() < 0.85) ? TILE.GRASS : TILE.GRASS_PLAIN;
         this.add.image(x, y, KEY.tilesheet, tile).setOrigin(0).setScale(0.5).setDepth(0);

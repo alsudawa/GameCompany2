@@ -20,6 +20,7 @@ export class BootScene extends Phaser.Scene {
     // Gemini-generated walk strips (4 frames @ 64×64)
     this.load.spritesheet('king_walk',    'assets/sheets/king_walk.png',    { frameWidth: 64, frameHeight: 64 });
     this.load.spritesheet('soldier_walk', 'assets/sheets/soldier_walk.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.image('menu_bg', 'assets/sheets/menu_bg.png');
 
     // Kenney Top-Down Shooter — 캐릭터 스프라이트
     this.load.image('zombie',   'assets/chars/zombie.png');

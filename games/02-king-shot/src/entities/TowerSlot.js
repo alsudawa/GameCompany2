@@ -23,13 +23,18 @@ export class TowerSlot extends Phaser.GameObjects.Container {
     this.padBg = scene.add.graphics();
     this.gaugeBg = scene.add.graphics();
     this.gauge = scene.add.graphics();
-    this.glyph = scene.add.text(0, -3, this.cfg.icon, {
+    this.glyph = scene.add.text(0, -7, this.cfg.icon, {
       fontFamily: '"Cinzel", Georgia, serif',
-      fontSize: '20px', fontStyle: '900',
+      fontSize: '18px', fontStyle: '900',
+      color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 2,
+    }).setOrigin(0.5);
+    this.costLabel = scene.add.text(0, 11, `${this.cfg.cost?.[0] ?? 0}g`, {
+      fontFamily: '"Cinzel", Georgia, serif',
+      fontSize: '11px', fontStyle: '700',
       color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 2,
     }).setOrigin(0.5);
 
-    this.add([this.padBg, this.glyph, this.gaugeBg, this.gauge]);
+    this.add([this.padBg, this.glyph, this.costLabel, this.gaugeBg, this.gauge]);
 
     this.drawPad();
 
@@ -94,12 +99,16 @@ export class TowerSlot extends Phaser.GameObjects.Container {
 
   setCharging(active) { this.charging = active && this.enabled && !this.built; }
 
+  get cost() { return this.cfg.cost?.[0] ?? 0; }
+
   update(dt, scene) {
     if (!this.enabled || this.built) {
       this.drawGauge(0);
       return;
     }
-    if (this.charging) {
+    const canAfford = (scene.coinsEarned ?? 0) >= this.cost;
+    this.costLabel.setColor(canAfford ? '#3e2e1e' : '#a02020');
+    if (this.charging && canAfford) {
       this.charge += dt;
       this.drawGauge(Math.min(1, this.charge / CHARGE_TIME));
       if (this.charge >= CHARGE_TIME) this.build(scene);
@@ -110,13 +119,15 @@ export class TowerSlot extends Phaser.GameObjects.Container {
   }
 
   build(scene) {
+    if ((scene.coinsEarned ?? 0) < this.cost) return;
+    if (typeof scene.spendCoins === 'function') scene.spendCoins(this.cost);
     this.built = true;
     this.charge = 0;
     this.drawGauge(0);
     if (this.pulseTween) { this.pulseTween.stop(); this.pulseTween = null; this.setScale(1); }
-    // 패드 + 글리프 페이드
+    // 패드 + 글리프 + 비용 페이드
     scene.tweens.add({
-      targets: [this.padBg, this.glyph], alpha: 0, duration: 260,
+      targets: [this.padBg, this.glyph, this.costLabel], alpha: 0, duration: 260,
     });
     // 타워 등장
     const tower = new Tower(scene, this.x, this.y, this.kind);

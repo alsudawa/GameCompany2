@@ -641,6 +641,11 @@ export class GameScene extends Phaser.Scene {
     this.updateHud();
   }
 
+  spendCoins(n) {
+    this.coinsEarned = Math.max(0, this.coinsEarned - n);
+    this.updateHud();
+  }
+
   updateHud() {
     if (!this.hudCoins) return;
     this.hudCoins.setText(String(this.coinsEarned));
