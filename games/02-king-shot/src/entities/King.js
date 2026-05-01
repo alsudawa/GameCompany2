@@ -18,18 +18,14 @@ export class King extends Phaser.GameObjects.Container {
     super(scene, 0, 0);
     scene.add.existing(this);
 
-    this.shadow = scene.add.ellipse(0, 14, 38, 11, 0x000000, 0.45);
-    this.cape   = scene.add.graphics();
-    this.bodyGroup = scene.add.container(0, 0);
-    this.body   = scene.add.image(0, 0, 'king').setScale(0.6);
+    this.shadow = scene.add.ellipse(0, 18, 44, 12, 0x000000, 0.5);
+    this.body   = scene.add.sprite(0, -8, 'king_walk', 0).setScale(1.0);
+    this.body.play('king_walk');
     this.bow    = scene.add.graphics();
     this.bowDrawProgress = 0.85;
     this.drawBow();
-    this.bodyGroup.add([this.body, this.bow]);
-
-    this.crown  = scene.add.graphics();
     this.glow   = scene.add.graphics();
-    this.add([this.shadow, this.cape, this.bodyGroup, this.crown, this.glow]);
+    this.add([this.shadow, this.body, this.bow, this.glow]);
 
     this.maxHp = 5;
     this.hp = 5;
@@ -42,63 +38,13 @@ export class King extends Phaser.GameObjects.Container {
     this.weapon = { ...WEAPON_BASE };
     this.magnetRadius = 130;
 
-    this.drawCape();
-    this.drawCrown();
-
     scene.tweens.add({
       targets: this, scale: { from: 1, to: 1.03 },
       duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
-    scene.tweens.add({
-      targets: this.cape, scaleX: { from: 1, to: 1.08 },
-      duration: 800, yoyo: true, repeat: -1, ease: 'Sine.InOut',
-    });
-    scene.tweens.add({
-      targets: this.crown, y: { from: -20, to: -23 },
-      duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.InOut',
-    });
   }
 
-  drawCape() {
-    const g = this.cape;
-    g.clear();
-    const top = -2, bot = 16, topW = 16, botW = 26;
-    g.fillStyle(COLORS.capeRedDk, 1);
-    g.fillPoints([
-      { x: -topW / 2 - 1, y: top + 1 }, { x:  topW / 2 + 1, y: top + 1 },
-      { x:  botW / 2 + 1, y: bot + 1 }, { x: -botW / 2 - 1, y: bot + 1 },
-    ], true);
-    g.fillStyle(COLORS.capeRed, 1);
-    g.fillPoints([
-      { x: -topW / 2, y: top }, { x:  topW / 2, y: top },
-      { x:  botW / 2, y: bot }, { x: -botW / 2, y: bot },
-    ], true);
-    g.fillStyle(COLORS.goldHud, 1);
-    g.fillRect(-botW / 2, bot - 3, botW, 2);
-  }
-
-  drawCrown() {
-    const c = this.crown;
-    c.clear();
-    c.y = -20;
-    const baseW = 20;
-    c.fillStyle(COLORS.goldDeep, 1);
-    c.fillRect(-baseW / 2 - 1, 1, baseW + 2, 4);
-    c.fillStyle(COLORS.goldHud, 1);
-    c.fillRect(-baseW / 2, 0, baseW, 4);
-    [-baseW / 2 + 2, -baseW / 4, 0, baseW / 4, baseW / 2 - 2].forEach((sx, i) => {
-      const h = [3, 5, 7, 5, 3][i];
-      c.fillStyle(COLORS.goldHud, 1);
-      c.fillTriangle(sx - 1.3, 0, sx + 1.3, 0, sx, -h);
-    });
-    c.fillStyle(COLORS.capeRed, 1);
-    c.fillCircle(0, 2.5, 1.5);
-    c.fillStyle(COLORS.gemBlue, 1);
-    c.fillCircle(-baseW / 4, 2.5, 1.1);
-    c.fillCircle( baseW / 4, 2.5, 1.1);
-  }
-
-  // 활 — bodyGroup 좌표계, 조준 방향(-y) 앞쪽에 위치.
+  // 활 — King 컨테이너 좌표계, 조준 방향(-y) 앞쪽 기준.
   drawBow() {
     const b = this.bow;
     b.clear();
@@ -158,12 +104,14 @@ export class King extends Phaser.GameObjects.Container {
     }
     if (this.fireCooldown > 0) this.fireCooldown -= dt;
 
-    // bodyGroup 회전: 조준 우선, 없으면 이동 방향, 둘 다 없으면 기본 위쪽
+    // 새 사이드뷰 스프라이트: 회전 대신 좌/우 flip + bow만 조준 방향으로 회전
     let rot;
     if (this._haveAim) rot = this.aimAngle;
     else if (movingDir != null) rot = movingDir;
     else rot = -Math.PI / 2;
-    this.bodyGroup.setRotation(rot + Math.PI / 2);
+    this.body.setFlipX(Math.cos(rot) < 0);
+    this.body.setRotation(0);
+    this.bow.setRotation(rot + Math.PI / 2);
 
     // 활 시위 진행도: fireCooldown 진행에 따라 0 → 1
     if (this._haveAim) {
