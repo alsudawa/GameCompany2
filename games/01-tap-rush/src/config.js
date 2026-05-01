@@ -60,6 +60,21 @@ export const COMBO_RANKS = [
   { at: 40, label: 'GOD LIKE!', color: 0xffffff },
 ];
 
+// FEVER TIME — 콤보 40 달성 시 발동. 점수 2배 + 스폰 간격 절반.
+export const FEVER = {
+  triggerCombo: 40,
+  duration: 10,       // 초
+  spawnMul: 0.5,      // 스폰 간격 × 0.5 (두 배 빠름)
+  scoreMul: 2.0,
+  bgColor: 0xffd24a,
+};
+
+// RUSH BREAK — LEVELS[2] (LVL 3, 16초) 진입 직후 스폰 2초 정지.
+export const RUSH_BREAK = {
+  levelIdx: 2,        // LEVELS 배열 인덱스
+  duration: 2,        // 초
+};
+
 // 세션 중 점수 마일스톤 (달성 시 팡파르)
 export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
 

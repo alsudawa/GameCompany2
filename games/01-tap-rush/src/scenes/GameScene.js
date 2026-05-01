@@ -17,6 +17,7 @@ import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
   JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  FEVER, RUSH_BREAK,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -65,8 +66,18 @@ export class GameScene extends Phaser.Scene {
     this.reachedMilestones = new Set();
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
-    // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
+
+    // FEVER TIME
+    this.isFever = false;
+    this.feverRemaining = 0;
+    this.feverLabel = null;
+    this.feverTimerLabel = null;
+
+    // RUSH BREAK
+    this.rushBreakActive = false;
+    this.rushBreakTriggered = false;
+    this.rushBreakRemaining = 0;
 
     // 풀
     this.orbs = [];
@@ -231,18 +242,24 @@ export class GameScene extends Phaser.Scene {
 
   drawTimeBar(ratio) {
     const { width, height } = this.scale;
-    const barH = 4;
+    const r = Math.max(0, Math.min(1, ratio));
+
+    // 25% 이하에서 바 높이를 맥동: 4 → 6px 사이 진동
+    const isWarning = r < 0.25;
+    const wave = isWarning ? Math.sin(this.time.now * 0.012) : 0;
+    const barH = isWarning ? 4 + Math.round(wave * 2) : 4;
     const y = height - barH;
+
     this.timeBarBg.clear();
     this.timeBarBg.fillStyle(0x101428, 1);
     this.timeBarBg.fillRect(0, y, width, barH);
 
     this.timeBar.clear();
-    const r = Math.max(0, Math.min(1, ratio));
-    const color = r < 0.15 ? 0xff4d6d : r < 0.3 ? 0xffd24a : 0x00e5ff;
-    this.timeBar.fillStyle(color, 1);
+    const color = r < 0.15 ? 0xff4d6d : r < 0.25 ? 0xff2bd6 : r < 0.4 ? 0xffd24a : 0x00e5ff;
+    // 경고 구간에서 알파 맥동 (0.7~1.0)
+    const alpha = isWarning ? 0.7 + (wave + 1) * 0.15 : 1;
+    this.timeBar.fillStyle(color, alpha);
     this.timeBar.fillRect(0, y, width * r, barH);
-    // 상단 하이라이트
     this.timeBar.fillStyle(0xffffff, 0.35);
     this.timeBar.fillRect(0, y, width * r, 1);
   }
@@ -472,8 +489,10 @@ export class GameScene extends Phaser.Scene {
       this.remaining = Math.max(0, GAME.sessionSeconds - this.elapsed);
       const sec = Math.ceil(this.remaining);
       this.hudTime.setText(String(sec));
-      this.drawTimeBar(this.remaining / GAME.sessionSeconds);
-      // 마지막 5초 긴박감
+
+      // 시간바 + 시간 텍스트 색상 (25% 이하에서 맥동 경고)
+      const timeRatio = this.remaining / GAME.sessionSeconds;
+      this.drawTimeBar(timeRatio);
       if (sec <= 5 && sec > 0) {
         this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
       } else {
@@ -483,10 +502,26 @@ export class GameScene extends Phaser.Scene {
       // 레벨 진행 체크
       this.checkLevelProgression();
 
+      // RUSH BREAK: LEVELS[RUSH_BREAK.levelIdx] 진입 직후 스폰 일시 정지
+      if (this.levelIdx === RUSH_BREAK.levelIdx && !this.rushBreakTriggered) {
+        this.rushBreakTriggered = true;
+        this.rushBreakActive = true;
+        this.rushBreakRemaining = RUSH_BREAK.duration;
+        this.showRushBreak();
+      }
+      if (this.rushBreakActive) {
+        this.rushBreakRemaining -= dt;
+        if (this.rushBreakRemaining <= 0) this.rushBreakActive = false;
+      }
+
+      // FEVER TIME 업데이트 (오버레이 + 카운트다운)
+      this.updateFever(dt);
+
       this.spawnTimer -= dt;
-      if (this.spawnTimer <= 0) {
+      if (this.spawnTimer <= 0 && !this.rushBreakActive) {
         this.spawnOrb();
-        this.spawnTimer = this.currentLevel.spawn * this.stage.spawnMul;
+        const baseInterval = this.currentLevel.spawn * this.stage.spawnMul;
+        this.spawnTimer = this.isFever ? baseInterval * FEVER.spawnMul : baseInterval;
       }
 
       if (this.remaining <= 0) this.endSession();
@@ -635,7 +670,8 @@ export class GameScene extends Phaser.Scene {
 
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
-    const mul = comboMul * judge.mul;
+    const feverBonus = this.isFever ? FEVER.scoreMul : 1.0;
+    const mul = comboMul * judge.mul * feverBonus;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;
@@ -690,6 +726,19 @@ export class GameScene extends Phaser.Scene {
         this.reachedRanks.add(rank.at);
         this.showRankBanner(rank);
       }
+    }
+
+    // FEVER TIME 트리거
+    if (this.combo >= FEVER.triggerCombo && !this.isFever) {
+      this.startFever();
+    }
+
+    // PERFECT 판정 시 TAP ZONE 라인 버스트
+    if (judge.tier === 'PERFECT') {
+      const { width } = this.scale;
+      Juice.ring(this, width / 2, this.judgmentY, {
+        color: COLORS.gold, radius: width * 0.65, count: 2, duration: 450,
+      });
     }
 
     // 마일스톤 체크
@@ -828,6 +877,101 @@ export class GameScene extends Phaser.Scene {
     this.borderFx.strokeRect(3, 3, width - 6, height - 6);
     this.borderFx.lineStyle(16, color, alpha * 0.25);
     this.borderFx.strokeRect(10, 10, width - 20, height - 20);
+  }
+
+  showRushBreak() {
+    const { width, height } = this.scale;
+    Audio.levelUp?.();
+    Juice.flash(this, COLORS.cyan, 140);
+
+    const t = this.add.text(width / 2, height * 0.42, 'RUSH BREAK', {
+      fontFamily: FONT.display, fontSize: '38px', fontStyle: '900',
+      color: '#00e5ff', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(975).setLetterSpacing(6).setAlpha(0).setScale(0.5);
+
+    const sub = this.add.text(width / 2, height * 0.42 + 48, 'KEEP YOUR COMBO!', {
+      fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
+      color: '#6b708f',
+    }).setOrigin(0.5).setDepth(975).setLetterSpacing(4).setAlpha(0);
+
+    this.tweens.add({
+      targets: [t, sub], alpha: 1, scale: 1,
+      duration: 200, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: [t, sub], alpha: 0, y: '-=24',
+          duration: 440, delay: RUSH_BREAK.duration * 1000 - 500,
+          onComplete: () => { t.destroy(); sub.destroy(); },
+        });
+      },
+    });
+  }
+
+  startFever() {
+    this.isFever = true;
+    this.feverRemaining = FEVER.duration;
+
+    Juice.flash(this, FEVER.bgColor, 300);
+    Juice.ring(this, this.scale.width / 2, this.scale.height / 2, {
+      color: FEVER.bgColor, radius: 420, count: 3, duration: 700,
+    });
+    Audio.fanfare?.();
+
+    const { width } = this.scale;
+    this.feverLabel = this.add.text(width / 2, 128, '🔥 FEVER TIME 🔥', {
+      fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(310).setLetterSpacing(4).setAlpha(0).setScale(0.5);
+
+    this.tweens.add({
+      targets: this.feverLabel, alpha: 1, scale: 1,
+      duration: 220, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: this.feverLabel,
+          scaleX: { from: 1.0, to: 1.04 },
+          scaleY: { from: 1.0, to: 1.04 },
+          duration: 500, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+        });
+      },
+    });
+
+    this.feverTimerLabel = this.add.text(width / 2, 158, `${FEVER.duration}`, {
+      fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
+      color: '#ffd24a',
+    }).setOrigin(0.5).setDepth(310).setAlpha(0.85);
+  }
+
+  updateFever(dt) {
+    if (!this.isFever) return;
+    this.feverRemaining -= dt;
+
+    if (this.feverTimerLabel?.active) {
+      this.feverTimerLabel.setText(Math.ceil(Math.max(0, this.feverRemaining)).toString());
+    }
+
+    // 골드 배경 오버레이 강제 유지
+    this.bgIntensity = 1.0;
+    const { width, height } = this.scale;
+    this.bgPulse.clear();
+    const wave = 0.10 + 0.06 * Math.sin(this.time.now * 0.007);
+    this.bgPulse.fillStyle(FEVER.bgColor, wave);
+    this.bgPulse.fillRect(0, 64, width, height - 64);
+    this.bgPulse.fillStyle(FEVER.bgColor, wave * 0.6);
+    this.bgPulse.fillRect(0, 64, width, 80);
+    this.bgPulse.fillStyle(FEVER.bgColor, wave * 0.6);
+    this.bgPulse.fillRect(0, height - 90, width, 90);
+
+    if (this.feverRemaining <= 0) this.endFever();
+  }
+
+  endFever() {
+    this.isFever = false;
+    this.feverLabel?.destroy();
+    this.feverLabel = null;
+    this.feverTimerLabel?.destroy();
+    this.feverTimerLabel = null;
+    Juice.flash(this, COLORS.cyan, 200);
   }
 
   endSession() {
