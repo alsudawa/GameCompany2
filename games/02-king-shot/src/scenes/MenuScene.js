@@ -43,31 +43,31 @@ export class MenuScene extends Phaser.Scene {
 
     // 타이틀 — 더 큰 폰트 + 다층 그림자 + 글로우
     const titleY = bannerY - 8;
-    const glow = this.add.text(width / 2, titleY, 'KING SHOT', {
-      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+    const glow = this.add.text(width / 2, titleY, 'CROWNHOLD', {
+      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
       color: '#f4c542',
     }).setOrigin(0.5).setAlpha(0.4).setDepth(2);
-    glow.setLetterSpacing?.(5);
+    glow.setLetterSpacing?.(4);
     this.tweens.add({
       targets: glow, alpha: { from: 0.3, to: 0.7 },
       duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
-    const titleShadow = this.add.text(width / 2 + 3, titleY + 4, 'KING SHOT', {
-      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+    const titleShadow = this.add.text(width / 2 + 3, titleY + 4, 'CROWNHOLD', {
+      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
       color: '#000000',
     }).setOrigin(0.5).setAlpha(0.7).setDepth(2);
-    titleShadow.setLetterSpacing?.(5);
-    const title = this.add.text(width / 2, titleY, 'KING SHOT', {
-      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+    titleShadow.setLetterSpacing?.(4);
+    const title = this.add.text(width / 2, titleY, 'CROWNHOLD', {
+      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
       color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
     }).setOrigin(0.5).setDepth(3);
-    title.setLetterSpacing?.(5);
+    title.setLetterSpacing?.(4);
     this.tweens.add({
       targets: title, scale: { from: 1, to: 1.04 },
       duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
     });
-    this.add.text(width / 2, titleY + 36, 'TOWER DEFENSE', {
-      fontFamily: FONT.mono, fontSize: '13px', fontStyle: '700',
+    this.add.text(width / 2, titleY + 32, 'ARROW · DEFENSE', {
+      fontFamily: FONT.mono, fontSize: '12px', fontStyle: '700',
       color: '#f4e8c8',
     }).setOrigin(0.5).setDepth(3).setLetterSpacing?.(6);
 
