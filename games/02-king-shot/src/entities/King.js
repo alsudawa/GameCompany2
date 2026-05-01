@@ -20,7 +20,7 @@ export class King extends Phaser.GameObjects.Container {
 
     this.shadow = scene.add.ellipse(0, 18, 44, 12, 0x000000, 0.5);
     this.body   = scene.add.sprite(0, -8, 'king_walk', 0).setScale(1.0);
-    this.body.play('king_walk');
+    this._isMoving = false;
     this.bow    = scene.add.graphics();
     this.bowDrawProgress = 0.85;
     this.drawBow();
@@ -104,7 +104,7 @@ export class King extends Phaser.GameObjects.Container {
     }
     if (this.fireCooldown > 0) this.fireCooldown -= dt;
 
-    // 새 사이드뷰 스프라이트: 회전 대신 좌/우 flip + bow만 조준 방향으로 회전
+    // 사이드뷰: 회전 대신 좌/우 flip, bow만 조준 방향으로 회전
     let rot;
     if (this._haveAim) rot = this.aimAngle;
     else if (movingDir != null) rot = movingDir;
@@ -112,6 +112,17 @@ export class King extends Phaser.GameObjects.Container {
     this.body.setFlipX(Math.cos(rot) < 0);
     this.body.setRotation(0);
     this.bow.setRotation(rot + Math.PI / 2);
+
+    // walk 애니메이션은 실제로 움직일 때만 재생, 멈추면 정지 프레임으로 복귀
+    const moving = movingDir != null;
+    if (moving && !this._isMoving) {
+      this.body.play('king_walk');
+      this._isMoving = true;
+    } else if (!moving && this._isMoving) {
+      this.body.stop();
+      this.body.setFrame(0);
+      this._isMoving = false;
+    }
 
     // 활 시위 진행도: fireCooldown 진행에 따라 0 → 1
     if (this._haveAim) {
