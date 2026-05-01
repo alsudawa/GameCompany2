@@ -203,7 +203,7 @@ export class GameScene extends Phaser.Scene {
     // 영웅 조준/사격 — 매 프레임 본체 회전을 위해 setAim
     const target = this.findFireTarget();
     this.king.setAim(target);
-    this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w));
+    this.king.tryFire(target, (sx, sy, ang, w) => this.spawnArrow(sx, sy, ang, w, target));
 
     // 타워
     for (const t of this.towers) t.update(dt, this);
@@ -490,22 +490,30 @@ export class GameScene extends Phaser.Scene {
     return best;
   }
 
-  spawnArrow(x, y, angle, weapon) {
+  spawnArrow(x, y, angle, weapon, targetEnemy = null) {
     const p = this.projectiles.find(pr => !pr.alive);
     if (!p) return;
-    p.reset(x, y, { x: x + Math.cos(angle) * 100, y: y + Math.sin(angle) * 100 },
-      'archer', { damage: weapon.damage, speed: weapon.projectileSpeed });
+    // 실제 타겟이 있으면 그쪽으로 호밍, 없으면 직선 비행
+    const target = targetEnemy ?? { x: x + Math.cos(angle) * 100, y: y + Math.sin(angle) * 100 };
+    p.reset(x, y, target, 'archer', {
+      damage: weapon.damage,
+      speed: weapon.projectileSpeed,
+      homing: !!targetEnemy,
+    });
     Audio.tap();
   }
 
   fireProjectile(tower, target) {
     const p = this.projectiles.find(pr => !pr.alive);
     if (!p) return;
+    // 모탈은 범위 폭격이라 호밍 X, 나머지(archer/cannon/frost)는 호밍
+    const homing = tower.cfg.bulletKind !== 'mortar';
     p.reset(tower.x, tower.y - 6, target, tower.cfg.bulletKind, {
       damage: tower.damage,
       splash: tower.cfg.splash,
       slow: tower.cfg.slow,
       speed: tower.cfg.bulletSpeed,
+      homing,
     });
     Audio.tap();
   }
@@ -533,10 +541,35 @@ export class GameScene extends Phaser.Scene {
           if (p.slow > 0) e.applySlow(p.slow, 1500);
           if (killed) this.onEnemyKilled(e);
         }
-        Juice.spark(this, p.x, p.y, 0xfff4a0, 12);
+        this.spawnHitFlash(p.x, p.y, p.kind);
         p.deactivate();
         return;
       }
+    }
+  }
+
+  // 화살이 박힌 듯한 임팩트 — 확장하는 + 모양 대신, 짧은 플래시 + 살짝 튀는 부스러기
+  spawnHitFlash(x, y, kind = 'archer') {
+    const color = kind === 'frost' ? 0xa0e0ff
+                : kind === 'mortar' || kind === 'cannon' ? 0xffaa55
+                : 0xfff4a0;
+    const flash = this.add.circle(x, y, 8, color, 0.85).setDepth(920);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: { from: 1.4, to: 0.6 },
+      duration: 130, ease: 'Cubic.Out',
+      onComplete: () => flash.destroy(),
+    });
+    // 작은 부스러기 3개 — 임팩트 지점에서 약간만 튐 (이전엔 +shape이 1.6배로 부풀어 튕겨나가 보였음)
+    for (let i = 0; i < 3; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 6 + Math.random() * 6;
+      const sp = this.add.circle(x, y, 1.2, color, 1).setDepth(919);
+      this.tweens.add({
+        targets: sp,
+        x: x + Math.cos(a) * d, y: y + Math.sin(a) * d,
+        alpha: 0, duration: 180, ease: 'Cubic.Out',
+        onComplete: () => sp.destroy(),
+      });
     }
   }
 
