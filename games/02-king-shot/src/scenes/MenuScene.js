@@ -103,7 +103,10 @@ export class MenuScene extends Phaser.Scene {
     this.refreshIndicators();
 
     // START 버튼
-    this.makeStartButton(width / 2, 640);
+    this.makeStartButton(width / 2, 620);
+
+    // FORGE 버튼 (영구 업그레이드)
+    this.makeForgeButton(width / 2, 700);
 
     // 하단 정보
     const totalGems = this.profile.gems || 0;
@@ -362,6 +365,37 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({
       targets: c, scale: { from: 1, to: 1.04 },
       duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
+  }
+
+  makeForgeButton(cx, cy) {
+    const w = 180, h = 38;
+    const c = this.add.container(cx, cy).setDepth(5);
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.45);
+    bg.fillRoundedRect(-w / 2 + 2, -h / 2 + 2, w, h, 6);
+    bg.fillStyle(0x4a2a14, 1);
+    bg.fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.lineStyle(2, COLORS.goldHud, 0.9);
+    bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 6);
+    bg.fillStyle(COLORS.goldHud, 1);
+    [[-w / 2 + 6, -h / 2 + 6], [w / 2 - 6, -h / 2 + 6],
+     [-w / 2 + 6,  h / 2 - 6], [w / 2 - 6,  h / 2 - 6]]
+      .forEach(([px, py]) => bg.fillCircle(px, py, 2));
+    c.add(bg);
+    const t = this.add.text(0, 0, '⚒ THE FORGE', {
+      fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setLetterSpacing?.(3);
+    c.add(t);
+    c.setSize(w, h);
+    c.setInteractive({ useHandCursor: true });
+    c.on('pointerover', () => this.tweens.add({ targets: c, scale: 1.05, duration: 140 }));
+    c.on('pointerout',  () => this.tweens.add({ targets: c, scale: 1, duration: 140 }));
+    c.on('pointerdown', () => {
+      Audio.tap();
+      this.cameras.main.fadeOut(220, 0, 0, 0);
+      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('UpgradeScene'));
     });
   }
 }

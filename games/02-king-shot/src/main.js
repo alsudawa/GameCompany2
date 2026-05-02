@@ -5,6 +5,7 @@ import { BootScene } from './scenes/BootScene.js';
 import { MenuScene } from './scenes/MenuScene.js';
 import { GameScene } from './scenes/GameScene.js';
 import { ResultScene } from './scenes/ResultScene.js';
+import { UpgradeScene } from './scenes/UpgradeScene.js';
 
 const config = {
   type: Phaser.AUTO,
@@ -23,7 +24,7 @@ const config = {
     roundPixels: true,
   },
   input: { activePointers: 4 },
-  scene: [BootScene, MenuScene, GameScene, ResultScene],
+  scene: [BootScene, MenuScene, GameScene, ResultScene, UpgradeScene],
 };
 
 new Phaser.Game(config);
