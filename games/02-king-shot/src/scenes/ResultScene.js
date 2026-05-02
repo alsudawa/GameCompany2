@@ -49,8 +49,13 @@ export class ResultScene extends Phaser.Scene {
     }[grade] ?? 0x8a6a4a;
     this.drawShieldMedal(width / 2, 240, 78, gradeColor, grade);
 
+    // 별 평가
+    if (s.victory && (s.stars ?? 0) > 0) {
+      this.drawStars(width / 2, 348, s.stars);
+    }
+
     if (s.isBest && s.victory) {
-      const bestTag = this.add.text(width / 2, 340, '★ NEW BEST ★', {
+      const bestTag = this.add.text(width / 2, 400, '★ NEW BEST ★', {
         fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
         color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
       }).setOrigin(0.5).setDepth(10);
@@ -82,6 +87,41 @@ export class ResultScene extends Phaser.Scene {
 
     if (s.victory) Audio.fanfare();
     else Audio.miss();
+  }
+
+  drawStars(cx, cy, n) {
+    const starGap = 56;
+    for (let i = 0; i < 3; i++) {
+      const x = cx + (i - 1) * starGap;
+      const filled = i < n;
+      const g = this.add.graphics().setDepth(10);
+      g.x = x; g.y = cy;
+      // 5각성 그리기
+      const drawStar = (rOuter, rInner, color, alpha = 1) => {
+        const pts = [];
+        for (let k = 0; k < 10; k++) {
+          const a = -Math.PI / 2 + k * Math.PI / 5;
+          const r = (k % 2 === 0) ? rOuter : rInner;
+          pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+        }
+        g.fillStyle(color, alpha);
+        g.fillPoints(pts, true);
+      };
+      drawStar(20, 9, 0x000000, 0.45);   // 그림자
+      g.x += -2; g.y += -2;
+      drawStar(20, 9, filled ? 0x6e5a2a : 0x3a3026);   // 외곽
+      drawStar(17, 7.5, filled ? 0xf4c542 : 0x5a4a32); // 본체
+      if (filled) {
+        drawStar(11, 5, 0xfff4a0, 0.85);               // 하이라이트
+      }
+      // 등장 애니메이션
+      g.setScale(0);
+      this.tweens.add({
+        targets: g, scale: 1,
+        duration: 320, delay: 600 + i * 180,
+        ease: 'Back.Out',
+      });
+    }
   }
 
   computeGrade(score) {

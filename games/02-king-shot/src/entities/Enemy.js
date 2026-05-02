@@ -121,15 +121,28 @@ export class Enemy extends Phaser.GameObjects.Container {
     return null;
   }
 
-  takeDamage(dmg) {
+  takeDamage(dmg, hitDirX = 0, hitDirY = 0) {
     if (!this.alive) return false;
     this.hp -= dmg;
     const ratio = Math.max(0, this.hp / this.maxHp);
     this.hpFill.width = this._hpFullW * ratio;
-    this.scene.tweens.add({
-      targets: this.body, alpha: { from: 1, to: 0.4 },
-      duration: 50, yoyo: true,
+    // 흰색 플래시 — 픽셀 sprite는 alpha만 yoyo하던 걸 흰 tint로 바꿔 더 또렷하게
+    const oldTint = TINT_FOR[this.kind] ?? 0xffffff;
+    this.body.setTintFill?.(0xffffff);
+    this.scene.time.delayedCall(60, () => {
+      if (!this.alive) return;
+      this.body.clearTint?.();
+      this.body.setTint(oldTint);
     });
+    // 화살 방향으로 살짝 밀리기 (laneOffset에 미는 양 누적 → 자연스럽게 원위치 회귀)
+    if (hitDirX || hitDirY) {
+      const ang = Math.atan2(this.path?.segs?.[0]?.b.y - this.path?.segs?.[0]?.a.y || 0,
+                             this.path?.segs?.[0]?.b.x - this.path?.segs?.[0]?.a.x || 0);
+      // 단순 lateral knockback: laneOffset 변경
+      const perpX = -Math.sin(ang), perpY = Math.cos(ang);
+      const dot = hitDirX * perpX + hitDirY * perpY;
+      this.laneOffset = Phaser.Math.Clamp(this.laneOffset + dot * 4, -28, 28);
+    }
     if (this.hp <= 0) {
       this.alive = false;
       this.scene.tweens.add({

@@ -36,7 +36,7 @@ export class King extends Phaser.GameObjects.Container {
     this.dragTarget = null;
     this.moveSpeed = 280;
     this.weapon = { ...WEAPON_BASE };
-    this.magnetRadius = 130;
+    this.magnetRadius = 220;
 
     scene.tweens.add({
       targets: this, scale: { from: 1, to: 1.03 },
