@@ -8,7 +8,7 @@ import { Juice } from '../../../../shared/juice.js';
 import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
-import { buildPath, tilePxCenter } from '../maps/path.js';
+import { buildPath, tilePxCenter, clampToPath } from '../maps/path.js';
 import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Projectile } from '../entities/Projectile.js';
@@ -20,6 +20,8 @@ const ENEMY_POOL = 100;
 const PROJECTILE_POOL = 160;
 const COIN_POOL = 60;
 const WAVE_BREATHER = 3.0;       // 웨이브 간 휴식(초)
+const KING_BAND = 30;            // 왕이 길 중심선에서 벗어날 수 있는 최대 거리(px) — 적 차선과 동일
+const SLOT_REACH = 65;           // 타워 슬롯 주변 워커블 범위 (path band와 연결되어 슬롯 접근 가능)
 
 // 슬롯에 배정할 타워 종류 — 라운드별 다르게 (단조로움 방지)
 const SLOT_TOWER_KINDS = ['archer', 'cannon', 'frost', 'mortar', 'archer', 'cannon',
@@ -40,14 +42,14 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#3a7d44');
     this.cameras.main.fadeIn(280, 0, 0, 0);
 
-    // 1) 배경
+    // 1) 경로 (먼저 빌드해야 drawPath에서 보간된 폴리라인을 쓸 수 있음)
+    this.path = buildPath(this.level.pathWaypoints);
+
+    // 2) 배경
     this.drawGround(width, height);
     this.drawPath();
     this.drawDecorations();
     this.drawAtmosphere(width, height);
-
-    // 2) 경로
-    this.path = buildPath(this.level.pathWaypoints);
 
     // 3) 풀
     this.enemies = [];
@@ -75,9 +77,10 @@ export class GameScene extends Phaser.Scene {
     this.building = new Building(this, tp.x, tp.y - 12);
     this.building.setDepth(45);
 
-    // 5) 영웅 (왕좌 근처에서 시작)
+    // 5) 영웅 — 길 끝(왕좌 앞) path 위에서 시작
     this.king = new King(this);
-    this.king.setPosition(tp.x, tp.y + 60);
+    const startEnd = this.path.segs[this.path.segs.length - 1].b;
+    this.king.setPosition(startEnd.x, startEnd.y);
     this.king.setDepth(80);
 
     // 6) 타워 슬롯 (TowerSlot 엔티티) — 왕좌 가까운 순으로 정렬해 unlock 순서 결정
@@ -132,7 +135,28 @@ export class GameScene extends Phaser.Scene {
   onPointer(p) {
     const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
     const y = Phaser.Math.Clamp(p.y, 80, this.scale.height - 30);
-    this.king.setDragTarget(x, y);
+    const c = this.clampKingArea(x, y);
+    this.king.setDragTarget(c.x, c.y);
+  }
+
+  // 워커블 영역: path 중심선 ±KING_BAND ∪ 활성 슬롯 SLOT_REACH 버블.
+  // (path band와 슬롯 버블이 겹치도록 SLOT_REACH가 충분히 크게 설정됨)
+  clampKingArea(x, y) {
+    const onPath = clampToPath(this.path, x, y, KING_BAND);
+    const dPath = Math.hypot(x - onPath.x, y - onPath.y);
+    if (dPath <= 0.5) return { x, y };
+    let best = onPath, bestD = dPath;
+    for (const s of (this.slots ?? [])) {
+      if (!s.enabled) continue;
+      const dx = x - s.x, dy = y - s.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= SLOT_REACH) return { x, y };
+      const u = SLOT_REACH / Math.max(d, 0.001);
+      const px = s.x + dx * u, py = s.y + dy * u;
+      const pd = Math.hypot(x - px, y - py);
+      if (pd < bestD) { best = { x: px, y: py }; bestD = pd; }
+    }
+    return best;
   }
 
   runCountdown() {
@@ -166,6 +190,11 @@ export class GameScene extends Phaser.Scene {
 
     // 영웅
     this.king.update(dt);
+    // 매 프레임 왕 위치를 워커블 영역 안으로 클램프
+    {
+      const c = this.clampKingArea(this.king.x, this.king.y);
+      this.king.x = c.x; this.king.y = c.y;
+    }
 
     // 웨이브 스폰
     if (this.waveActive && this.spawnQueue.length > 0) {
@@ -286,41 +315,64 @@ export class GameScene extends Phaser.Scene {
   }
 
   drawPath() {
-    const ts = GAME.tileSize;
-    const pts = this.level.pathWaypoints.map(([c, r]) => ({
-      x: c * ts + ts / 2, y: r * ts + ts / 2,
-    }));
-    const lane = ts - 4;
-    const draw = (g, w, color) => {
-      g.lineStyle(w, color, 1);
+    // path는 buildPath()로 이미 Catmull-Rom 보간된 조밀 폴리라인.
+    const pts = this.path.pts;
+    const lane = GAME.tileSize + 14;     // 더 넓은 진짜 길 폭
+    const stroke = (g, w, color, alpha = 1) => {
+      g.lineStyle(w, color, alpha);
       g.lineCap = 'round'; g.lineJoin = 'round';
       g.beginPath();
       g.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
       g.strokePath();
     };
-    draw(this.add.graphics().setDepth(3), lane + 8, 0x4a2a14);
-    draw(this.add.graphics().setDepth(4), lane, 0x8b5a3c);
-    const inner = this.add.graphics().setDepth(5);
-    inner.lineStyle(lane * 0.4, 0xb87a4a, 0.7);
-    inner.lineCap = 'round'; inner.lineJoin = 'round';
-    inner.beginPath();
-    inner.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) inner.lineTo(pts[i].x, pts[i].y);
-    inner.strokePath();
-    // 진행 점선
-    const dots = this.add.graphics().setDepth(6);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const len = Math.hypot(dx, dy);
-      if (!len) continue;
-      const nx = dx / len, ny = dy / len;
-      const step = 22;
-      for (let t = step; t < len - step / 2; t += step) {
-        dots.fillStyle(0xf4e8c8, 0.6);
-        dots.fillCircle(a.x + nx * t, a.y + ny * t, 1.5);
-      }
+
+    // 1) 길가 풀(어두운 가장자리) — 부드러운 흙길 경계
+    stroke(this.add.graphics().setDepth(3), lane + 14, 0x4a3a22, 0.55);
+    // 2) 흙길 메인
+    stroke(this.add.graphics().setDepth(4), lane, 0x8b5a3c);
+    // 3) 흙길 가운데 밝은 톤(노출된 흙) — 자연스러운 발자국
+    stroke(this.add.graphics().setDepth(5), lane * 0.55, 0xb98558, 0.85);
+    // 4) 더 밝은 중심선
+    stroke(this.add.graphics().setDepth(6), lane * 0.18, 0xd4a070, 0.55);
+
+    // 5) 길 위 자갈/돌 잔돌 (시드 의사난수로 결정)
+    const stones = this.add.graphics().setDepth(7);
+    let seed = 1337;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    for (let i = 4; i < pts.length - 4; i += 3) {
+      if (rnd() < 0.45) continue;
+      const a = pts[i], b = pts[i + 1] ?? a;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const perp = ang + Math.PI / 2;
+      const off = (rnd() - 0.5) * lane * 0.55;
+      const sx = a.x + Math.cos(perp) * off;
+      const sy = a.y + Math.sin(perp) * off;
+      const r = 1 + rnd() * 1.6;
+      stones.fillStyle(0x6e4a30, 0.6);
+      stones.fillCircle(sx + 0.5, sy + 0.5, r);
+      stones.fillStyle(0xc89870, 0.85);
+      stones.fillCircle(sx, sy, r);
+    }
+
+    // 6) 길 양옆 풀 디테일 — 작은 점 풀잎
+    const tufts = this.add.graphics().setDepth(7);
+    for (let i = 2; i < pts.length - 2; i += 2) {
+      if (rnd() < 0.55) continue;
+      const a = pts[i], b = pts[i + 1] ?? a;
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const perp = ang + Math.PI / 2;
+      const side = rnd() < 0.5 ? 1 : -1;
+      const off = side * (lane * 0.55 + 4 + rnd() * 6);
+      const tx = a.x + Math.cos(perp) * off;
+      const ty = a.y + Math.sin(perp) * off;
+      tufts.fillStyle(0x4a7a32, 0.85);
+      tufts.fillCircle(tx, ty, 1.6 + rnd() * 1.0);
+      tufts.fillStyle(0x6ea848, 0.9);
+      tufts.fillCircle(tx - 0.5, ty - 0.5, 1.0);
     }
   }
 
