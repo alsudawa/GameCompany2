@@ -284,10 +284,14 @@ export class Orb extends Phaser.GameObjects.Container {
   }
 
   deactivate() {
-    // 아직 alive=true 상태에서 들어왔다면 "낙하 중 놓침(미스)"
+    // 아직 alive=true 상태에서 들어왔다면 "낙하 중 놓침(미스)" 또는 BOMB 회피(dodge)
     // pop()이나 endSession()은 먼저 alive=false로 만드므로 여기선 제외.
-    if (this.alive && this.kind !== ORB_KIND.BOMB && this.scene && this.scene.events) {
-      this.scene.events.emit('orbMissed', this);
+    if (this.alive && this.scene && this.scene.events) {
+      if (this.kind === ORB_KIND.BOMB) {
+        this.scene.events.emit('orbDodged', this);
+      } else {
+        this.scene.events.emit('orbMissed', this);
+      }
     }
     // 링크 파트너 참조는 여기서 정리하지 않음 — 탭 후 pop 페이드 동안
     // 파트너 쪽 2nd 탭이 늦게 들어올 수 있으니 reset()에서만 정리한다.

@@ -255,7 +255,9 @@ export class GameScene extends Phaser.Scene {
       this.combo = 0;
       this.updateHud();
     }
+    this.drawComboArc();
     this.updateVolley(dt);
+    this.updateVolleyGlow();
 
     // 영웅↔적 접촉
     for (const e of this.enemies) {
@@ -931,6 +933,12 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(101).setAlpha(0);
     this.hudCombo.setLetterSpacing?.(2);
 
+    // 콤보 만료 아크 (hudCombo 주위 원호 — 남은 시간 시각화)
+    this.hudComboArc = this.add.graphics().setDepth(102);
+
+    // 왕좌 HP 핍 바 — 중앙 웨이브 라벨 아래 (HUD 패널 바깥, 화면 상단)
+    this.hudThroneBar = this.add.graphics().setDepth(102);
+
     // 로얄 볼리 HUD 버튼 — 우하단, 쿨다운 중엔 어두움
     this.makeVolleyButton(width - 46, this.scale.height - 64);
 
@@ -971,18 +979,25 @@ export class GameScene extends Phaser.Scene {
     if (!v) return;
     v.ring.clear(); v.bg.clear(); v.cdArc.clear();
     const r = v.r;
+    const powered = v.ready && this.combo >= 15;
     v.ring.fillStyle(0x000000, 0.55);
     v.ring.fillCircle(2, 2, r + 1);
-    v.ring.fillStyle(COLORS.woodDark, 1);
+    v.ring.fillStyle(powered ? 0x8a4a00 : COLORS.woodDark, 1);
     v.ring.fillCircle(0, 0, r + 1);
-    v.bg.fillStyle(v.ready ? 0xc8302d : 0x3a2820, 1);
+    // 강화 볼리 아우터 링
+    if (powered) {
+      v.ring.lineStyle(3, 0xff8a3a, 0.85);
+      v.ring.strokeCircle(0, 0, r + 4);
+    }
+    v.bg.fillStyle(v.ready ? (powered ? 0xc86010 : 0xc8302d) : 0x3a2820, 1);
     v.bg.fillCircle(0, 0, r - 2);
-    v.bg.lineStyle(2, COLORS.goldHud, v.ready ? 1 : 0.45);
+    v.bg.lineStyle(2, powered ? 0xff8a3a : COLORS.goldHud, v.ready ? 1 : 0.45);
     v.bg.strokeCircle(0, 0, r - 2);
     v.icon.setAlpha(v.ready ? 1 : 0.4);
+    v.icon.setColor(powered ? '#ffcc88' : '#fff5d8');
+    v.label.setText(powered ? 'CARNAGE' : 'VOLLEY');
     v.label.setAlpha(v.ready ? 1 : 0.5);
     if (!v.ready) {
-      // 쿨다운 진행 호 (시계 방향)
       const ratio = 1 - v.cooldown / v.cooldownMax;
       v.cdArc.lineStyle(3, COLORS.goldHud, 0.85);
       v.cdArc.beginPath();
@@ -991,35 +1006,63 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  updateVolleyGlow() {
+    if (!this.volley?.ready) return;
+    const powered = this.combo >= 15;
+    // 강화 모드 진입/해제 시만 버튼 재드로우
+    if (powered !== this._wasVolleyPowered) {
+      this._wasVolleyPowered = powered;
+      this.drawVolleyButton();
+    }
+  }
+
   fireRoyalVolley() {
     if (!this.volley?.ready) return;
+    const powered = this.combo >= 15;
     const target = this.findFireTarget();
     const baseAng = target
       ? Math.atan2(target.y - this.king.y, target.x - this.king.x)
       : -Math.PI / 2;
-    // 5발 부채 — ±25° 펼침, 데미지 1.4배
-    const fan = 5, spread = (50 * Math.PI / 180);
-    const dmg = Math.round(this.king.weapon.damage * 1.4);
+
+    // 강화 볼리: 10발 ±35°, 데미지 2배 — 콤보 소진
+    // 일반 볼리: 5발 ±25°, 데미지 1.4배
+    const fan    = powered ? 10 : 5;
+    const spread = powered ? (70 * Math.PI / 180) : (50 * Math.PI / 180);
+    const dmg    = Math.round(this.king.weapon.damage * (powered ? 2.0 : 1.4));
+
     for (let i = 0; i < fan; i++) {
-      const t = (i / (fan - 1)) - 0.5;
+      const t = fan > 1 ? (i / (fan - 1)) - 0.5 : 0;
       const a = baseAng + t * spread;
       const ox = this.king.x + Math.cos(a) * 18;
       const oy = this.king.y + Math.sin(a) * 18;
-      // 직선 비행 (호밍 X) — 부채 모양 유지
       const p = this.projectiles.find(pr => !pr.alive);
       if (!p) break;
       p.reset(ox, oy,
         { x: ox + Math.cos(a) * 200, y: oy + Math.sin(a) * 200 },
         'archer', { damage: dmg, speed: this.king.weapon.projectileSpeed * 1.1, homing: false });
     }
-    // FX
-    Juice.flash(this, COLORS.goldHud, 140);
-    Juice.shake(this, 0.01, 120);
-    Juice.popText(this, this.king.x, this.king.y - 36, 'ROYAL VOLLEY!',
-      { color: 0xf4c542, size: 16, rise: 28, duration: 700 });
+
+    if (powered) {
+      // 강화 볼리 FX
+      Juice.flash(this, 0xff8a3a, 200);
+      Juice.shake(this, 0.018, 200);
+      Juice.ring(this, this.king.x, this.king.y, { color: 0xff8a3a, radius: 180, count: 2, duration: 400 });
+      Juice.popText(this, this.king.x, this.king.y - 36, 'ROYAL CARNAGE!',
+        { color: 0xff8a3a, size: 18, rise: 32, duration: 800 });
+      // 콤보 소진
+      this.combo = 0;
+      this.comboUntil = 0;
+      this.updateHud();
+    } else {
+      Juice.flash(this, COLORS.goldHud, 140);
+      Juice.shake(this, 0.01, 120);
+      Juice.popText(this, this.king.x, this.king.y - 36, 'ROYAL VOLLEY!',
+        { color: 0xf4c542, size: 16, rise: 28, duration: 700 });
+    }
     Audio.fanfare();
     this.volley.ready = false;
     this.volley.cooldown = this.volley.cooldownMax;
+    this._wasVolleyPowered = false;
     this.drawVolleyButton();
   }
 
@@ -1062,6 +1105,66 @@ export class GameScene extends Phaser.Scene {
       this.hudWave.setText('CLEARED');
     } else {
       this.hudWave.setText('READY');
+    }
+    this.drawThroneBar();
+  }
+
+  drawComboArc() {
+    const g = this.hudComboArc;
+    if (!g) return;
+    g.clear();
+    if (this.combo <= 0 || !this.hudCombo) return;
+    const ratio = Math.max(0, (this.comboUntil - this.time.now) / 2500);
+    if (ratio <= 0) return;
+    const cx = this.hudCombo.x;
+    const cy = this.hudCombo.y;
+    const r = 18;
+    const color = ratio < 0.25 ? 0xff4d6d : ratio < 0.5 ? 0xffd24a : 0xff8a3a;
+    // 배경 아크 (회색)
+    g.lineStyle(2, 0x3e2e1e, 0.5);
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2, false);
+    g.strokePath();
+    // 진행 아크
+    g.lineStyle(2.5, color, 0.9);
+    g.beginPath();
+    g.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
+    g.strokePath();
+  }
+
+  drawThroneBar() {
+    const g = this.hudThroneBar;
+    if (!g || !this.building) return;
+    g.clear();
+    const { width } = this.scale;
+    const maxHp = this.building.maxHp || GAME.buildingHp;
+    const hp = this.building.hp ?? maxHp;
+    const pipW = 10, pipH = 6, gap = 3;
+    const totalW = maxHp * (pipW + gap) - gap;
+    const startX = (width - totalW) / 2;
+    const y = 58;
+    // 왕관 아이콘 (좌측)
+    g.fillStyle(COLORS.goldDeep, 0.9);
+    g.fillRect(startX - 16, y + 1, 3, 4);
+    g.fillRect(startX - 13, y, 3, 5);
+    g.fillRect(startX - 10, y + 1, 3, 4);
+    for (let i = 0; i < maxHp; i++) {
+      const x = startX + i * (pipW + gap);
+      const filled = i < hp;
+      // 그림자
+      g.fillStyle(0x000000, 0.4);
+      g.fillRect(x + 1, y + 1, pipW, pipH);
+      // 핍
+      if (filled) {
+        g.fillStyle(hp <= 2 ? 0xff4d6d : hp <= maxHp / 2 ? 0xffd24a : 0x4ad04f, 1);
+      } else {
+        g.fillStyle(0x3e2e1e, 0.7);
+      }
+      g.fillRect(x, y, pipW, pipH);
+      if (filled) {
+        g.fillStyle(0xffffff, 0.25);
+        g.fillRect(x, y, pipW, 1);
+      }
     }
   }
 

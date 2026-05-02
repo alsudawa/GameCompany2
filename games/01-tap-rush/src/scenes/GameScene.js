@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage, FINALE,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -67,6 +67,11 @@ export class GameScene extends Phaser.Scene {
     this.currentLevel = LEVELS[0];
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
+    // RUSH FINALE 모드 (마지막 10초 스코어 서지)
+    this.finaleTriggered = false;
+    this.finaleMul = 1;
+    // 세션 최고 기록 (Rival 비교용)
+    this.rivalScore = Storage.load().bestScores?.['tap-rush'] || 0;
 
     // 풀
     this.orbs = [];
@@ -130,11 +135,16 @@ export class GameScene extends Phaser.Scene {
     this.judgmentY = Math.round(height * JUDGMENT.lineYRatio);
     this.drawJudgmentZone();
 
+    // 콤보 윈도우 위험 바 — TAP ZONE 라인 바로 위에 그려지는 얇은 수평 게이지
+    this.comboWindowBar = this.add.graphics().setDepth(199);
+
     // LINK 쌍의 연결선용 그래픽 (오브 뒤, 판정선 위)
     this.linkLines = this.add.graphics().setDepth(-4);
 
     // 오브 낙하 놓침(fall-through) → MISS 처리
     this.events.on('orbMissed', (orb) => this.onOrbMiss(orb));
+    // 폭탄이 화면 아래로 빠져나감 → DODGE 보상
+    this.events.on('orbDodged', (orb) => this.onOrbDodge(orb));
 
     // 멀티터치 (LINK 동시 탭 지원) — 포인터 3개까지
     this.input.addPointer(3);
@@ -399,10 +409,89 @@ export class GameScene extends Phaser.Scene {
   onOrbMiss(orb) {
     if (!this.isPlaying) return;
     const { width, height } = this.scale;
-    // 콤보 끊김 (탭은 없었지만 놓쳤다 — 가벼운 벌)
     if (this.combo > 0) this.resetCombo();
-    // 하단 경계 근처에서 MISS 표시
     this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
+  }
+
+  onOrbDodge(orb) {
+    if (!this.isPlaying) return;
+    const x = Phaser.Math.Clamp(orb.x, 60, this.scale.width - 60);
+    const y = this.scale.height - 80;
+    const prev = this.score;
+    this.score += SCORE.dodge;
+    Juice.countUp(this, this.hudScore, prev, this.score, 180);
+    this.showJudgmentFeedback('DODGE', x, y);
+    Juice.popText(this, x, y - 28, `+${SCORE.dodge}`, { color: JUDGMENT_COLORS.DODGE, size: 20 });
+    Juice.spark(this, x, y, JUDGMENT_COLORS.DODGE, 10);
+  }
+
+  showFinaleBanner() {
+    const { width, height } = this.scale;
+    Audio.fanfare?.();
+    Juice.flash(this, COLORS.red, 220);
+    Juice.shake(this, 0.012, 200);
+
+    const line1 = this.add.text(width / 2, height * 0.36, 'RUSH FINALE!', {
+      fontFamily: 'Arial, sans-serif', fontSize: '52px', fontStyle: '900',
+      color: '#ff4d6d', stroke: '#000', strokeThickness: 7,
+    }).setOrigin(0.5).setDepth(975).setLetterSpacing(4).setScale(0.5).setAlpha(0);
+
+    const line2 = this.add.text(width / 2, height * 0.36 + 52, '×1.5 SCORE', {
+      fontFamily: 'Arial, sans-serif', fontSize: '26px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(975).setLetterSpacing(3).setScale(0.5).setAlpha(0);
+
+    this.tweens.add({
+      targets: line1, scale: 1.1, alpha: 1, duration: 260, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: line1, alpha: 0, y: line1.y - 30,
+          duration: 480, delay: 600, ease: 'Cubic.In',
+          onComplete: () => line1.destroy(),
+        });
+      },
+    });
+    this.tweens.add({
+      targets: line2, scale: 1, alpha: 1, duration: 260, delay: 80, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: line2, alpha: 0, y: line2.y - 30,
+          duration: 480, delay: 600, ease: 'Cubic.In',
+          onComplete: () => line2.destroy(),
+        });
+      },
+    });
+
+    Juice.ring(this, width / 2, height * 0.36, { color: COLORS.red, radius: 300, count: 2, duration: 600 });
+    for (let i = 0; i < 3; i++) {
+      this.time.delayedCall(i * 90, () => {
+        Juice.burst(this, width * 0.15, height * 0.36, { count: 12, color: COLORS.red, speed: 320 });
+        Juice.burst(this, width * 0.85, height * 0.36, { count: 12, color: COLORS.red, speed: 320 });
+      });
+    }
+  }
+
+  drawComboWindowBar(time) {
+    const g = this.comboWindowBar;
+    g.clear();
+    if (this.combo <= 0 || !this.isPlaying) return;
+
+    const { width } = this.scale;
+    const y = this.judgmentY - 8;
+    const barH = 3;
+    const ratio = Math.max(0, 1 - (time - this.lastTapAt) / COMBO.windowMs);
+    if (ratio <= 0) return;
+
+    const color = ratio < 0.25 ? 0xff4d6d : ratio < 0.5 ? 0xffd24a : 0x00e5ff;
+    // 배경
+    g.fillStyle(0x101428, 0.7);
+    g.fillRect(0, y, width, barH);
+    // 진행 바 (오른쪽에서 왼쪽으로 줄어듬 — "시간이 다 된다" 느낌)
+    g.fillStyle(color, ratio < 0.25 ? 0.9 : 0.75);
+    g.fillRect(0, y, width * ratio, barH);
+    // 하이라이트
+    g.fillStyle(0xffffff, 0.3 * ratio);
+    g.fillRect(0, y, width * ratio, 1);
   }
 
   drawComboBar() {
@@ -480,17 +569,30 @@ export class GameScene extends Phaser.Scene {
         this.hudTime.setColor('#e8ecf5');
       }
 
+      // RUSH FINALE 모드 (마지막 10초)
+      if (!this.finaleTriggered && this.remaining <= FINALE.triggerAt) {
+        this.finaleTriggered = true;
+        this.finaleMul = FINALE.scoreMul;
+        this.showFinaleBanner();
+      }
+
       // 레벨 진행 체크
       this.checkLevelProgression();
 
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnOrb();
-        this.spawnTimer = this.currentLevel.spawn * this.stage.spawnMul;
+        const baseInterval = this.finaleTriggered
+          ? FINALE.spawnInterval
+          : this.currentLevel.spawn * this.stage.spawnMul;
+        this.spawnTimer = baseInterval;
       }
 
       if (this.remaining <= 0) this.endSession();
     }
+
+    // 콤보 윈도우 위험 바 업데이트
+    this.drawComboWindowBar(time);
 
     for (const o of this.orbs) o.update(dt);
 
@@ -560,7 +662,9 @@ export class GameScene extends Phaser.Scene {
     const y = -40;
 
     // 스테이지 배수 적용: 속도/스폰 간격/폭탄·레어 확률 전부 스테이지 성격에 맞춤.
-    const speed = this.currentLevel.speed * this.stage.speedMul;
+    const speed = this.finaleTriggered
+      ? FINALE.speed * this.stage.speedMul
+      : this.currentLevel.speed * this.stage.speedMul;
     const bombProb = this.currentLevel.bomb * this.stage.bombMul;
     const rareProb = PROB.rare * this.stage.rareMul;
 
@@ -635,7 +739,7 @@ export class GameScene extends Phaser.Scene {
 
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
-    const mul = comboMul * judge.mul;
+    const mul = comboMul * judge.mul * this.finaleMul;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;

@@ -47,6 +47,15 @@ export const COMBO = {
 export const SCORE = {
   normal: 10,
   rare: 50,
+  dodge: 25,
+};
+
+// 마지막 10초 RUSH FINALE 모드
+export const FINALE = {
+  triggerAt: 10,   // 남은 초
+  spawnInterval: 0.08,
+  speed: 720,
+  scoreMul: 1.5,
 };
 
 export const GEMS_PER_RARE = 1;
@@ -90,6 +99,7 @@ export const JUDGMENT_COLORS = {
   LATE:    0x8a8aa8,
   MISS:    0xff4d6d,
   LINK:    0xff2bd6,
+  DODGE:   0x00ff88,
 };
 
 export const COLORS = {
