@@ -246,9 +246,33 @@ export class MenuScene extends Phaser.Scene {
     // 미니 프리뷰 (실제 타일 사용)
     this.drawMiniPreview(c, 0, -h / 2 + 145, stage);
 
+    // 별 등급
+    const stars = (this.profile.stageStars || {})[`king-shot-${stage.id}`] || 0;
+    const starGap = 18;
+    for (let i = 0; i < 3; i++) {
+      const sx = (i - 1) * starGap;
+      const sy = h / 2 - 38;
+      const filled = i < stars;
+      const sg = this.add.graphics();
+      sg.x = sx; sg.y = sy;
+      const drawStar = (rO, rI, color, alpha = 1) => {
+        const pts = [];
+        for (let k = 0; k < 10; k++) {
+          const a = -Math.PI / 2 + k * Math.PI / 5;
+          const r = (k % 2 === 0) ? rO : rI;
+          pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+        }
+        sg.fillStyle(color, alpha);
+        sg.fillPoints(pts, true);
+      };
+      drawStar(7, 3, filled ? 0x6e5a2a : 0x6a5a3a);
+      drawStar(6, 2.5, filled ? 0xf4c542 : 0xa89878);
+      c.add(sg);
+    }
+
     // 베스트
     const best = (this.profile.bestScores || {})[`king-shot-${stage.id}`] || 0;
-    const bestT = this.add.text(0, h / 2 - 22, `BEST · ${best.toLocaleString()}`, {
+    const bestT = this.add.text(0, h / 2 - 18, `BEST · ${best.toLocaleString()}`, {
       fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
       color: '#8a6a2a',
     }).setOrigin(0.5).setLetterSpacing?.(3);

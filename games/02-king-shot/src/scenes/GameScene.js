@@ -2,7 +2,7 @@
 // 영웅이 자유 2D 이동 + 자동 사격, 경로 적이 왕좌로 진군, 영웅이 슬롯 위에 서서 타워 빌드,
 // 적 처치 시 코인 드롭+자석 수집, 자동 웨이브 진행 + 베이스 진화.
 
-import { COLORS, FONT, GAME, KEY, TILE, TOWERS } from '../config.js';
+import { COLORS, FONT, GAME, KEY, TILE, TOWERS, GRADE_CUTS } from '../config.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { Storage } from '../../../../shared/storage.js';
@@ -107,6 +107,7 @@ export class GameScene extends Phaser.Scene {
     this.score = 0;
     this.kills = 0;
     this.coinsEarned = 0;
+    this.gemsEarned = 0;
     this.waveIdx = -1;
     this.waveActive = false;
     this.waveBreather = 0;
@@ -115,6 +116,11 @@ export class GameScene extends Phaser.Scene {
     this.boss = null;
     this.isPlaying = false;
     this.isOver = false;
+    this.maxLeak = 5;            // 시작 throne HP — 무피해 별 판정용
+    // 콤보
+    this.combo = 0;
+    this.comboUntil = 0;
+    this.comboBest = 0;
 
     // 8) 입력 — 탭한 위치로 이동 (릴리즈해도 유지)
     this.input.on('pointerdown', (p) => this.onPointer(p));
@@ -211,6 +217,24 @@ export class GameScene extends Phaser.Scene {
       const r = e.update(dt, this);
       if (r?.reachedEnd) this.onEnemyReachedThrone(e, r.damage);
     }
+    // Gilded halo follow + cleanup
+    if (this._gildedHalos) {
+      for (let i = this._gildedHalos.length - 1; i >= 0; i--) {
+        const h = this._gildedHalos[i];
+        if (!h._follow.alive) {
+          h.destroy();
+          this._gildedHalos.splice(i, 1);
+        } else {
+          h.x = h._follow.x;
+          h.y = h._follow.y;
+        }
+      }
+    }
+    // 콤보 만료 시 HUD 갱신
+    if (this.combo > 0 && this.time.now > this.comboUntil) {
+      this.combo = 0;
+      this.updateHud();
+    }
 
     // 영웅↔적 접촉
     for (const e of this.enemies) {
@@ -262,12 +286,18 @@ export class GameScene extends Phaser.Scene {
         const dy = c.y - this.king.y;
         const r = this.king.hitRadius + 6;
         if (dx * dx + dy * dy < r * r) {
-          this.coinsEarned += c.value;
-          this.score += c.value * 2;
+          if (c.value >= 5) {
+            this.gemsEarned += 1;
+            this.score += 25;
+            Juice.spark(this, c.x, c.y, 0x80c8ff, 12);
+            this.spawnDmgNumber(c.x, c.y - 6, '+GEM', 'frost');
+          } else {
+            this.coinsEarned += c.value;
+            this.score += c.value * 2;
+            Juice.spark(this, c.x, c.y, COLORS.goldHud, 8);
+          }
           c.deactivate();
           this.updateHud();
-          // 작은 반짝
-          Juice.spark(this, c.x, c.y, COLORS.goldHud, 8);
         }
       }
     }
@@ -526,6 +556,21 @@ export class GameScene extends Phaser.Scene {
     if (!e) return;
     e.reset(kind, this.path, this.hpMul);
     if (kind === 'boss') this.boss = e;
+    // Gilded 적: 일반 적 중 ~5%, 보스 제외 — 황금빛 + 사망시 보너스
+    e._gilded = false;
+    if (kind !== 'boss' && Math.random() < 0.05) {
+      e._gilded = true;
+      e.body.setTint(0xffd24a);
+      // 반짝 글로우 — 시각 신호
+      const halo = this.add.circle(0, 0, 22, 0xffd24a, 0.3).setDepth(e.depth - 1);
+      halo._follow = e;
+      this.tweens.add({
+        targets: halo, alpha: { from: 0.18, to: 0.45 },
+        duration: 600, yoyo: true, repeat: -1,
+      });
+      this._gildedHalos = this._gildedHalos ?? [];
+      this._gildedHalos.push(halo);
+    }
   }
 
   // ────────────── 사격/충돌 ──────────────
@@ -577,19 +622,23 @@ export class GameScene extends Phaser.Scene {
       const dy = e.y - p.y;
       const r = e.hitRadius + 8;
       if (dx * dx + dy * dy < r * r) {
+        // 화살 진행 방향 (호밍이라 frame-by-frame angle)
+        const hdx = Math.cos(p.angle), hdy = Math.sin(p.angle);
         if (p.splash > 0) {
           for (const e2 of this.enemies) {
             if (!e2.alive) continue;
             const ddx = e2.x - p.x;
             const ddy = e2.y - p.y;
             if (ddx * ddx + ddy * ddy < (p.splash + 18) * (p.splash + 18)) {
-              const killed = e2.takeDamage(p.dmg);
+              this.spawnDmgNumber(e2.x, e2.y - 18, p.dmg, p.kind);
+              const killed = e2.takeDamage(p.dmg, hdx, hdy);
               if (killed) this.onEnemyKilled(e2);
             }
           }
           this.spawnExplosion(p.x, p.y, p.splash);
         } else {
-          const killed = e.takeDamage(p.dmg);
+          this.spawnDmgNumber(e.x, e.y - 18, p.dmg, p.kind);
+          const killed = e.takeDamage(p.dmg, hdx, hdy);
           if (p.slow > 0) e.applySlow(p.slow, 1500);
           if (killed) this.onEnemyKilled(e);
         }
@@ -598,6 +647,24 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
+  }
+
+  // 데미지 숫자 — 위로 떠오르며 페이드
+  spawnDmgNumber(x, y, n, kind = 'archer') {
+    const color = kind === 'frost' ? '#a0e0ff'
+                : kind === 'mortar' ? '#ffd070'
+                : kind === 'cannon' ? '#ffaa55'
+                : '#fff5d8';
+    const t = this.add.text(x + (Math.random() - 0.5) * 12, y, String(n), {
+      fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
+      color, stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(925);
+    this.tweens.add({
+      targets: t, y: y - 22, alpha: { from: 1, to: 0 },
+      scale: { from: 0.7, to: 1.05 },
+      duration: 480, ease: 'Cubic.Out',
+      onComplete: () => t.destroy(),
+    });
   }
 
   // 화살이 박힌 듯한 임팩트 — 확장하는 + 모양 대신, 짧은 플래시 + 살짝 튀는 부스러기
@@ -645,14 +712,47 @@ export class GameScene extends Phaser.Scene {
   }
 
   onEnemyKilled(e) {
-    this.score += e.scoreVal;
+    // ── 콤보 ──
+    const now = this.time.now;
+    if (now > this.comboUntil) this.combo = 0;
+    this.combo++;
+    this.comboUntil = now + 2500;
+    if (this.combo > this.comboBest) this.comboBest = this.combo;
+    const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
+    this.score += e.scoreVal * mult;
     this.kills++;
     if (e === this.boss) this.boss = null;
-    // 코인 드롭 — 적 보상에 비례한 개수
+
+    // 콤보 milestone popText
+    const milestone = (this.combo === 7 || this.combo === 15 || this.combo === 25);
+    if (milestone) {
+      const label = this.combo === 7 ? 'STREAK!' : this.combo === 15 ? 'FRENZY!' : 'CARNAGE!';
+      Juice.popText(this, this.king.x, this.king.y - 36, label,
+        { color: 0xff8a3a, size: 18, rise: 36, duration: 700 });
+      Juice.flash(this, 0xff8a3a, 100);
+    }
+
+    // ── 코인/보석 드롭 ──
     const drops = Math.max(3, Math.min(12, Math.round(e.bounty / 3)));
     for (let i = 0; i < drops; i++) {
       this.spawnCoin(e.x + (Math.random() - 0.5) * 12,
                      e.y + (Math.random() - 0.5) * 8, 1);
+    }
+    // 보석: ~6% 기본, 콤보 멀티 영향 — 짜릿한 보너스 드롭 (수집 시 gemsEarned 증가)
+    if (Math.random() < 0.06 + (mult - 1) * 0.02) {
+      this.spawnCoin(e.x, e.y - 4, 5);   // value 5 = gem (Coin.js에서 색 분기)
+    }
+    // Gilded 적 — 사망시 추가 코인 폭발 + 하트 회복
+    if (e._gilded) {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        this.spawnCoin(e.x + Math.cos(a) * 18, e.y + Math.sin(a) * 18, 1);
+      }
+      Juice.popText(this, e.x, e.y - 40, '+ HEART',
+        { color: 0xff5050, size: 14, rise: 26, duration: 700 });
+      this.king.hp = Math.min(this.king.maxHp, this.king.hp + 1);
+      Juice.flash(this, 0xffd24a, 180);
+      this.updateHud();
     }
     this.updateHud();
   }
@@ -723,6 +823,13 @@ export class GameScene extends Phaser.Scene {
       color: '#c8302d', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(1, 0).setDepth(101);
 
+    // 콤보 카운터 — 화면 중앙 상단, 활성 시에만
+    this.hudCombo = this.add.text(width / 2, 50, '', {
+      fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(101).setAlpha(0);
+    this.hudCombo.setLetterSpacing?.(2);
+
     this.updateHud();
   }
 
@@ -735,6 +842,15 @@ export class GameScene extends Phaser.Scene {
     if (!this.hudCoins) return;
     this.hudCoins.setText(String(this.coinsEarned));
     this.hudHp.setText('♥ ' + this.king.hp);
+    if (this.hudCombo) {
+      if (this.combo >= 3) {
+        const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
+        this.hudCombo.setText(`${this.combo} COMBO  ×${mult}`);
+        if (this.hudCombo.alpha < 1) this.tweens.add({ targets: this.hudCombo, alpha: 1, duration: 120 });
+      } else if (this.hudCombo.alpha > 0) {
+        this.tweens.add({ targets: this.hudCombo, alpha: 0, duration: 200 });
+      }
+    }
     if (this.waveActive) {
       this.hudWave.setText(this.level.waves[this.waveIdx]?.label ?? '');
       this.hudWave.setColor('#f4c542');
@@ -791,11 +907,22 @@ export class GameScene extends Phaser.Scene {
     const isBest = Storage.setBestScore(stageKey, this.score);
     Storage.setBestScore('king-shot', this.score);
     if (this.coinsEarned > 0) Storage.addCoins(this.coinsEarned);
-    const bonusGems = victory ? 3 : 0;
-    if (bonusGems) Storage.addGems(bonusGems);
+    const totalGems = (this.gemsEarned ?? 0) + (victory ? 3 : 0);
+    if (totalGems) Storage.addGems(totalGems);
+    // 별 평가 (승리시): 1) 클리어 2) 무피해(throne 풀HP) 3) S grade
+    let stars = 0;
+    if (victory) {
+      stars = 1;
+      const throneHp = this.building?.hp ?? 0;
+      const throneFull = this.building?.maxHp ?? 1;
+      if (throneHp >= throneFull) stars = 2;
+      if (this.score >= GRADE_CUTS.S) stars = 3;
+    }
+    const isNewStars = stars > 0 ? Storage.setStars(stageKey, stars) : false;
     Analytics.track('session_end', {
       game: 'king-shot', stage: this.level.id,
       score: this.score, kills: this.kills, victory, isBest,
+      stars, comboBest: this.comboBest,
     });
     this.cameras.main.fadeOut(420, 0, 0, 0);
     this.cameras.main.once('camerafadeoutcomplete', () => {
@@ -803,7 +930,8 @@ export class GameScene extends Phaser.Scene {
         victory, score: this.score, kills: this.kills,
         bestScore: Math.max(prevBest, this.score),
         isBest, stageId: this.level.id,
-        coinsEarned: this.coinsEarned, gemsEarned: bonusGems,
+        coinsEarned: this.coinsEarned, gemsEarned: totalGems,
+        stars, isNewStars, comboBest: this.comboBest,
       });
     });
   }

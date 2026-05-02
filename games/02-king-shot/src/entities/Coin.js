@@ -24,21 +24,33 @@ export class Coin extends Phaser.GameObjects.Container {
   draw() {
     const g = this.gfx;
     g.clear();
-    // 외곽
-    g.fillStyle(0x000000, 0.45);
-    g.fillCircle(1.2, 1.2, 7);
-    // 진한 골드 외측
-    g.fillStyle(0xc89438, 1);
-    g.fillCircle(0, 0, 7);
-    // 밝은 골드 내측
-    g.fillStyle(0xffd24a, 1);
-    g.fillCircle(0, 0, 5.5);
-    // 중심 별 모양
-    g.fillStyle(0xc89438, 1);
-    g.fillCircle(0, 0, 2.6);
-    // 하이라이트
-    g.fillStyle(0xffffff, 0.85);
-    g.fillCircle(-2, -2.2, 1);
+    if (this.value >= 5) {
+      // GEM — 다이아몬드형 청록
+      g.fillStyle(0x000000, 0.5);
+      g.fillTriangle(-7, 1, 7, 1, 0, 9);
+      g.fillTriangle(-7, 1, 7, 1, 0, -7);
+      g.fillStyle(0x2a8fc8, 1);
+      g.fillTriangle(-8, 0, 8, 0, 0, 8);
+      g.fillTriangle(-8, 0, 8, 0, 0, -8);
+      g.fillStyle(0x80c8ff, 1);
+      g.fillTriangle(-5, 0, 5, 0, 0, 6);
+      g.fillStyle(0xc8e8ff, 0.95);
+      g.fillTriangle(-3, 0, 0, -4, 3, 0);
+      g.fillStyle(0xffffff, 0.95);
+      g.fillCircle(-1.5, -1.5, 0.9);
+    } else {
+      // GOLD COIN
+      g.fillStyle(0x000000, 0.45);
+      g.fillCircle(1.2, 1.2, 7);
+      g.fillStyle(0xc89438, 1);
+      g.fillCircle(0, 0, 7);
+      g.fillStyle(0xffd24a, 1);
+      g.fillCircle(0, 0, 5.5);
+      g.fillStyle(0xc89438, 1);
+      g.fillCircle(0, 0, 2.6);
+      g.fillStyle(0xffffff, 0.85);
+      g.fillCircle(-2, -2.2, 1);
+    }
   }
 
   reset(x, y, value = 1) {
@@ -46,6 +58,7 @@ export class Coin extends Phaser.GameObjects.Container {
     this.value = value;
     this.x = x;
     this.y = y;
+    this.draw();           // 값에 맞는 외형 (코인/보석)으로 재그림
     this.lifetime = 9;
     this._spin = Math.random() * Math.PI * 2;
     this._magneted = false;

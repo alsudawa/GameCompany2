@@ -11,6 +11,7 @@ const DEFAULT_PROFILE = {
   ownedSkins: ['default'],
   equippedSkin: 'default',
   bestScores: {},          // { 'tap-rush': 12345, ... }
+  stageStars: {},          // { 'king-shot-gate': 3, ... } 0~3
   achievements: [],        // ['first_combo_10', ...]
   lastLoginISO: null,
   firstPurchaseDone: false,
@@ -71,6 +72,23 @@ export const Storage = {
       return true;
     }
     return false;
+  },
+
+  setStars(stageKey, stars) {
+    const p = this.load();
+    p.stageStars = p.stageStars || {};
+    const prev = p.stageStars[stageKey] || 0;
+    if (stars > prev) {
+      p.stageStars[stageKey] = stars;
+      this.save(p);
+      return true;
+    }
+    return false;
+  },
+
+  getStars(stageKey) {
+    const p = this.load();
+    return (p.stageStars || {})[stageKey] || 0;
   },
 
   ownSkin(skinId) {
