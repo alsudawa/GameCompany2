@@ -9,6 +9,8 @@ import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
 import { buildPath, tilePxCenter, clampToPath } from '../maps/path.js';
+import { rollPerks } from '../meta/perks.js';
+import { computeBonuses } from '../meta/upgrades.js';
 import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Projectile } from '../entities/Projectile.js';
@@ -77,11 +79,23 @@ export class GameScene extends Phaser.Scene {
     this.building = new Building(this, tp.x, tp.y - 12);
     this.building.setDepth(45);
 
-    // 5) 영웅 — 길 끝(왕좌 앞) path 위에서 시작
+    // 5) 영웅 — 길 끝(왕좌 앞) path 위에서 시작 + 영구 업그레이드 적용
+    const bonuses = computeBonuses(Storage.getUpgrades());
     this.king = new King(this);
     const startEnd = this.path.segs[this.path.segs.length - 1].b;
     this.king.setPosition(startEnd.x, startEnd.y);
     this.king.setDepth(80);
+    if (bonuses.hpBonus) {
+      this.king.maxHp += bonuses.hpBonus;
+      this.king.hp = this.king.maxHp;
+    }
+    if (bonuses.dmgMul && bonuses.dmgMul !== 1) {
+      this.king.weapon.damage = Math.round(this.king.weapon.damage * bonuses.dmgMul);
+    }
+    if (bonuses.magnetMul && bonuses.magnetMul !== 1) {
+      this.king.magnetRadius = Math.round(this.king.magnetRadius * bonuses.magnetMul);
+    }
+    this._startGoldBonus = bonuses.startGold || 0;
 
     // 6) 타워 슬롯 (TowerSlot 엔티티) — 왕좌 가까운 순으로 정렬해 unlock 순서 결정
     this.slots = [];
@@ -106,7 +120,7 @@ export class GameScene extends Phaser.Scene {
     // 7) 상태
     this.score = 0;
     this.kills = 0;
-    this.coinsEarned = 0;
+    this.coinsEarned = this._startGoldBonus || 0;   // ROYAL VAULT 업그레이드
     this.gemsEarned = 0;
     this.waveIdx = -1;
     this.waveActive = false;
@@ -139,6 +153,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   onPointer(p) {
+    // 볼리 버튼 영역 위에서 누르면 왕 이동 무시 (버튼 자체 onpointerdown이 처리)
+    if (this.volley) {
+      const dx = p.x - this.volley.container.x;
+      const dy = p.y - this.volley.container.y;
+      if (dx * dx + dy * dy < (this.volley.r + 4) ** 2) return;
+    }
     const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
     const y = Phaser.Math.Clamp(p.y, 80, this.scale.height - 30);
     const c = this.clampKingArea(x, y);
@@ -235,6 +255,7 @@ export class GameScene extends Phaser.Scene {
       this.combo = 0;
       this.updateHud();
     }
+    this.updateVolley(dt);
 
     // 영웅↔적 접촉
     for (const e of this.enemies) {
@@ -539,16 +560,93 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = WAVE_BREATHER;
+      this.waveBreather = 999;          // 퍽 선택 전까지 정지
+      this.showPerkCards();
       // 보너스 코인 (드롭 형태로 영웅 근처에)
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
                        this.king.y + (Math.random() - 0.5) * 60, 5);
       }
-      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
-        '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
     }
+  }
+
+  showPerkCards() {
+    const { width, height } = this.scale;
+    const perks = rollPerks(3);
+    const overlay = this.add.container(0, 0).setDepth(950);
+    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
+    overlay.add(dim);
+    const title = this.add.text(width / 2, 110, 'CHOOSE A BLESSING', {
+      fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
+    }).setOrigin(0.5);
+    title.setLetterSpacing?.(4);
+    overlay.add(title);
+    const sub = this.add.text(width / 2, 142, 'WAVE COMPLETE · PICK ONE', {
+      fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+      color: '#f4e8c8',
+    }).setOrigin(0.5).setLetterSpacing?.(4);
+    overlay.add(sub);
+
+    const cardW = 130, cardH = 180, gap = 14;
+    const totalW = cardW * 3 + gap * 2;
+    const startX = (width - totalW) / 2;
+    perks.forEach((perk, i) => {
+      const cx = startX + i * (cardW + gap) + cardW / 2;
+      const cy = height / 2;
+      const card = this.add.container(cx, cy);
+      // 그림자 + 양피지 카드
+      const sh = this.add.graphics();
+      sh.fillStyle(0x000000, 0.55);
+      sh.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 4, cardW, cardH, 12);
+      const bg = this.add.graphics();
+      bg.fillStyle(COLORS.parchment, 0.97);
+      bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      bg.fillStyle(COLORS.parchmentDim, 1);
+      bg.fillRect(-cardW / 2, -cardH / 2, cardW, 8);
+      bg.fillRect(-cardW / 2, cardH / 2 - 8, cardW, 8);
+      bg.lineStyle(3, COLORS.woodDark, 1);
+      bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
+      bg.lineStyle(1, perk.color, 0.9);
+      bg.strokeRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW - 6, cardH - 6, 10);
+      // 큰 아이콘
+      const icon = this.add.text(0, -42, perk.icon, {
+        fontFamily: FONT.display, fontSize: '40px', fontStyle: '900',
+        color: Phaser.Display.Color.IntegerToColor(perk.color).rgba,
+        stroke: '#3e2e1e', strokeThickness: 3,
+      }).setOrigin(0.5);
+      // 이름
+      const name = this.add.text(0, 4, perk.name, {
+        fontFamily: FONT.display, fontSize: '13px', fontStyle: '900',
+        color: '#3e2e1e',
+      }).setOrigin(0.5).setLetterSpacing?.(2);
+      // 설명
+      const desc = this.add.text(0, 38, perk.desc, {
+        fontFamily: FONT.body, fontSize: '11px', fontStyle: '600',
+        color: '#5a3e2e', wordWrap: { width: cardW - 18 }, align: 'center',
+      }).setOrigin(0.5);
+      card.add([sh, bg, icon, name, desc]);
+      card.setSize(cardW, cardH);
+      card.setInteractive({ useHandCursor: true });
+      card.on('pointerover', () => this.tweens.add({ targets: card, scale: 1.06, duration: 140 }));
+      card.on('pointerout',  () => this.tweens.add({ targets: card, scale: 1, duration: 140 }));
+      card.on('pointerdown', () => {
+        Audio.purchase();
+        perk.apply(this);
+        Juice.popText(this, width / 2, height / 2 - 80, perk.name,
+          { color: perk.color, size: 16, rise: 30, duration: 700 });
+        overlay.destroy();
+        this.waveBreather = WAVE_BREATHER;       // 정상 카운트다운 재개
+      });
+      // 등장 애니메이션
+      card.setScale(0).setAlpha(0);
+      this.tweens.add({
+        targets: card, scale: 1, alpha: 1,
+        duration: 320, delay: 120 + i * 90, ease: 'Back.Out',
+      });
+      overlay.add(card);
+    });
   }
 
   spawnEnemy(kind) {
@@ -733,14 +831,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     // ── 코인/보석 드롭 ──
-    const drops = Math.max(3, Math.min(12, Math.round(e.bounty / 3)));
+    const goldRush = (this._goldRushUntil ?? -1) >= this.waveIdx;
+    const dropMul = goldRush ? 2 : 1;
+    const drops = Math.max(3, Math.min(12, Math.round(e.bounty / 3))) * dropMul;
     for (let i = 0; i < drops; i++) {
       this.spawnCoin(e.x + (Math.random() - 0.5) * 12,
                      e.y + (Math.random() - 0.5) * 8, 1);
     }
-    // 보석: ~6% 기본, 콤보 멀티 영향 — 짜릿한 보너스 드롭 (수집 시 gemsEarned 증가)
-    if (Math.random() < 0.06 + (mult - 1) * 0.02) {
-      this.spawnCoin(e.x, e.y - 4, 5);   // value 5 = gem (Coin.js에서 색 분기)
+    // 보석: 기본 6% + 콤보 보너스 + LUCKY STAR 영구 보너스
+    const gemChance = 0.06 + (mult - 1) * 0.02 + (this._gemBonus ?? 0);
+    if (Math.random() < gemChance) {
+      this.spawnCoin(e.x, e.y - 4, 5);
     }
     // Gilded 적 — 사망시 추가 코인 폭발 + 하트 회복
     if (e._gilded) {
@@ -830,7 +931,107 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(101).setAlpha(0);
     this.hudCombo.setLetterSpacing?.(2);
 
+    // 로얄 볼리 HUD 버튼 — 우하단, 쿨다운 중엔 어두움
+    this.makeVolleyButton(width - 46, this.scale.height - 64);
+
     this.updateHud();
+  }
+
+  // ────────────── 로얄 볼리 ──────────────
+  makeVolleyButton(cx, cy) {
+    const r = 32;
+    const c = this.add.container(cx, cy).setDepth(102);
+    const ring = this.add.graphics();
+    const bg = this.add.graphics();
+    const cdArc = this.add.graphics();
+    const icon = this.add.text(0, -2, '⟁', {
+      fontFamily: FONT.display, fontSize: '30px', fontStyle: '900',
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5);
+    const label = this.add.text(0, 18, 'VOLLEY', {
+      fontFamily: FONT.mono, fontSize: '8px', fontStyle: '700',
+      color: '#fff5d8',
+    }).setOrigin(0.5).setLetterSpacing?.(2);
+    c.add([ring, bg, cdArc, icon, label]);
+    c.setSize(r * 2, r * 2);
+    c.setInteractive({ useHandCursor: true });
+    this.volley = {
+      container: c, ring, bg, cdArc, icon, label,
+      ready: true,
+      cooldown: 0,
+      cooldownMax: this._volleyCooldown ?? 12,
+      r,
+    };
+    this.drawVolleyButton();
+    c.on('pointerdown', () => this.fireRoyalVolley());
+  }
+
+  drawVolleyButton() {
+    const v = this.volley;
+    if (!v) return;
+    v.ring.clear(); v.bg.clear(); v.cdArc.clear();
+    const r = v.r;
+    v.ring.fillStyle(0x000000, 0.55);
+    v.ring.fillCircle(2, 2, r + 1);
+    v.ring.fillStyle(COLORS.woodDark, 1);
+    v.ring.fillCircle(0, 0, r + 1);
+    v.bg.fillStyle(v.ready ? 0xc8302d : 0x3a2820, 1);
+    v.bg.fillCircle(0, 0, r - 2);
+    v.bg.lineStyle(2, COLORS.goldHud, v.ready ? 1 : 0.45);
+    v.bg.strokeCircle(0, 0, r - 2);
+    v.icon.setAlpha(v.ready ? 1 : 0.4);
+    v.label.setAlpha(v.ready ? 1 : 0.5);
+    if (!v.ready) {
+      // 쿨다운 진행 호 (시계 방향)
+      const ratio = 1 - v.cooldown / v.cooldownMax;
+      v.cdArc.lineStyle(3, COLORS.goldHud, 0.85);
+      v.cdArc.beginPath();
+      v.cdArc.arc(0, 0, r - 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ratio, false);
+      v.cdArc.strokePath();
+    }
+  }
+
+  fireRoyalVolley() {
+    if (!this.volley?.ready) return;
+    const target = this.findFireTarget();
+    const baseAng = target
+      ? Math.atan2(target.y - this.king.y, target.x - this.king.x)
+      : -Math.PI / 2;
+    // 5발 부채 — ±25° 펼침, 데미지 1.4배
+    const fan = 5, spread = (50 * Math.PI / 180);
+    const dmg = Math.round(this.king.weapon.damage * 1.4);
+    for (let i = 0; i < fan; i++) {
+      const t = (i / (fan - 1)) - 0.5;
+      const a = baseAng + t * spread;
+      const ox = this.king.x + Math.cos(a) * 18;
+      const oy = this.king.y + Math.sin(a) * 18;
+      // 직선 비행 (호밍 X) — 부채 모양 유지
+      const p = this.projectiles.find(pr => !pr.alive);
+      if (!p) break;
+      p.reset(ox, oy,
+        { x: ox + Math.cos(a) * 200, y: oy + Math.sin(a) * 200 },
+        'archer', { damage: dmg, speed: this.king.weapon.projectileSpeed * 1.1, homing: false });
+    }
+    // FX
+    Juice.flash(this, COLORS.goldHud, 140);
+    Juice.shake(this, 0.01, 120);
+    Juice.popText(this, this.king.x, this.king.y - 36, 'ROYAL VOLLEY!',
+      { color: 0xf4c542, size: 16, rise: 28, duration: 700 });
+    Audio.fanfare();
+    this.volley.ready = false;
+    this.volley.cooldown = this.volley.cooldownMax;
+    this.drawVolleyButton();
+  }
+
+  updateVolley(dt) {
+    if (!this.volley || this.volley.ready) return;
+    this.volley.cooldown = Math.max(0, this.volley.cooldown - dt);
+    if (this.volley.cooldown <= 0) {
+      this.volley.ready = true;
+      Juice.popText(this, this.volley.container.x, this.volley.container.y - 38, 'READY',
+        { color: 0xf4c542, size: 11, rise: 16, duration: 500 });
+    }
+    this.drawVolleyButton();
   }
 
   spendCoins(n) {

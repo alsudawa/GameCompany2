@@ -12,6 +12,7 @@ const DEFAULT_PROFILE = {
   equippedSkin: 'default',
   bestScores: {},          // { 'tap-rush': 12345, ... }
   stageStars: {},          // { 'king-shot-gate': 3, ... } 0~3
+  upgrades: {},            // { 'kingHp': 2, 'bowDmg': 4, ... } 영구 업그레이드 레벨
   achievements: [],        // ['first_combo_10', ...]
   lastLoginISO: null,
   firstPurchaseDone: false,
@@ -89,6 +90,26 @@ export const Storage = {
   getStars(stageKey) {
     const p = this.load();
     return (p.stageStars || {})[stageKey] || 0;
+  },
+
+  getUpgrades() {
+    const p = this.load();
+    return p.upgrades || {};
+  },
+
+  setUpgradeLevel(id, level) {
+    const p = this.load();
+    p.upgrades = p.upgrades || {};
+    p.upgrades[id] = level;
+    this.save(p);
+  },
+
+  spendCoins(n) {
+    const p = this.load();
+    if ((p.coins || 0) < n) return false;
+    p.coins -= n;
+    this.save(p);
+    return true;
   },
 
   ownSkin(skinId) {
