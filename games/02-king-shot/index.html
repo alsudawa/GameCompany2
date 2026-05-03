@@ -53,21 +53,24 @@
     }
     canvas { touch-action: none; display: block; }
 
-    /* 좌상단 런처 복귀 — 우드/골드 톤 */
+    /* 좌상단 홈 아이콘 — 작고 우드/골드 톤의 원형 버튼 */
     .back-link {
-      position: fixed; top: 14px; left: 14px; z-index: 10;
-      color: var(--dim); text-decoration: none;
-      font-family: "Cinzel", "JetBrains Mono", monospace;
-      font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
-      background: rgba(62, 46, 30, 0.7);
-      padding: 8px 14px; border-radius: 2px;
-      border: 1px solid rgba(244, 197, 66, 0.35);
-      transition: color 0.15s, border-color 0.15s, box-shadow 0.15s;
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px;
+      color: #f4c542; text-decoration: none;
+      background: rgba(42, 24, 16, 0.85);
+      border-radius: 50%;
+      border: 1.5px solid rgba(244, 197, 66, 0.55);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+      transition: color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s;
     }
+    .back-link svg { width: 16px; height: 16px; display: block; }
     .back-link:hover {
-      color: var(--gold);
+      color: #fff5d8;
       border-color: var(--gold);
-      box-shadow: 0 0 14px rgba(244, 197, 66, 0.35);
+      transform: scale(1.08);
+      box-shadow: 0 0 14px rgba(244, 197, 66, 0.45);
     }
 
     /* 우하단 시그널 — 골드 깜빡임 */
@@ -91,7 +94,12 @@
   </style>
 </head>
 <body>
-  <a class="back-link" href="../../index.html">◂ LAUNCHER</a>
+  <a class="back-link" href="../../index.html" aria-label="Home" title="Home">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 11.5L12 4l9 7.5"/>
+      <path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>
+    </svg>
+  </a>
   <div class="sigil"><span class="dot"></span> GC2 · CROWNHOLD · v1</div>
   <div id="game-root"></div>
 
