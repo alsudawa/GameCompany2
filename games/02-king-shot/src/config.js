@@ -111,11 +111,11 @@ export const TOWERS = {
 
 // 적 정의 — 경로 속도(px/s), HP, 보상.
 export const ENEMIES = {
-  soldier: { hp: 60,   speed: 60,  damage: 1, score: 10, bounty: 8,  sprite: 'soldier_walk', anim: 'soldier_walk', scale: 0.6 },
-  scout:   { hp: 35,   speed: 110, damage: 1, score: 14, bounty: 10, sprite: 'zombie2', scale: 0.45 },
-  heavy:   { hp: 180,  speed: 45,  damage: 2, score: 30, bounty: 18, sprite: 'robot',   scale: 0.6 },
-  elite:   { hp: 320,  speed: 55,  damage: 2, score: 60, bounty: 32, sprite: 'elite',   scale: 0.6 },
-  boss:    { hp: 1800, speed: 28,  damage: 5, score: 600, bounty: 200, sprite: 'robot',  scale: 1.1 },
+  soldier: { hp: 75,   speed: 60,  damage: 1, score: 10, bounty: 8,  sprite: 'soldier_walk', anim: 'soldier_walk', scale: 0.6 },
+  scout:   { hp: 42,   speed: 115, damage: 1, score: 14, bounty: 10, sprite: 'zombie2', scale: 0.45 },
+  heavy:   { hp: 220,  speed: 45,  damage: 2, score: 30, bounty: 18, sprite: 'robot',   scale: 0.6 },
+  elite:   { hp: 420,  speed: 60,  damage: 2, score: 60, bounty: 32, sprite: 'elite',   scale: 0.6 },
+  boss:    { hp: 2800, speed: 28,  damage: 5, score: 600, bounty: 200, sprite: 'robot',  scale: 1.1 },
 };
 
 export const GRADE_CUTS = {

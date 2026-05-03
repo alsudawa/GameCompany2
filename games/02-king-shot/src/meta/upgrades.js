@@ -14,29 +14,29 @@ export const UPGRADES = [
   {
     id: 'bowDmg',
     name: 'KEEN ARROWS',
-    desc: '활 데미지 +12% / 레벨',
+    desc: '활 데미지 +8% / 레벨',
     icon: '⚔', color: 0xff8a3a,
     maxLevel: 5,
     cost: l => [100, 240, 520, 1000, 2000][l] ?? 999999,
-    effect: l => ({ dmgMul: 1 + 0.12 * l }),
+    effect: l => ({ dmgMul: 1 + 0.08 * l }),
   },
   {
     id: 'startGold',
     name: 'ROYAL VAULT',
-    desc: '시작 코인 +30 / 레벨',
+    desc: '시작 코인 +25 / 레벨',
     icon: '⛁', color: 0xf4c542,
     maxLevel: 5,
     cost: l => [80, 200, 440, 900, 1800][l] ?? 999999,
-    effect: l => ({ startGold: 30 * l }),
+    effect: l => ({ startGold: 25 * l }),
   },
   {
     id: 'magnet',
     name: 'GOLDEN PULL',
-    desc: '코인 자석 +20% / 레벨',
+    desc: '코인 자석 +12% / 레벨',
     icon: '◉', color: 0xffd24a,
     maxLevel: 5,
     cost: l => [70, 170, 380, 800, 1600][l] ?? 999999,
-    effect: l => ({ magnetMul: 1 + 0.20 * l }),
+    effect: l => ({ magnetMul: 1 + 0.12 * l }),
   },
 ];
 
@@ -54,3 +54,11 @@ export function computeBonuses(profileUpgrades = {}) {
   }
   return merged;
 }
+
+// 업그레이드 누적 레벨 합 — 적 스케일링 입력
+export function totalUpgradeLevels(profileUpgrades = {}) {
+  let n = 0;
+  for (const u of UPGRADES) n += profileUpgrades[u.id] ?? 0;
+  return n;
+}
+

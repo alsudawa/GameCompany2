@@ -10,7 +10,7 @@ import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
 import { buildPath, tilePxCenter, clampToPath } from '../maps/path.js';
 import { rollPerks } from '../meta/perks.js';
-import { computeBonuses } from '../meta/upgrades.js';
+import { computeBonuses, totalUpgradeLevels } from '../meta/upgrades.js';
 import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Projectile } from '../entities/Projectile.js';
@@ -35,7 +35,14 @@ export class GameScene extends Phaser.Scene {
 
   init(data) {
     this.level = getLevel(data?.levelId);
-    this.hpMul = this.level.hpMul ?? 1;
+    // 동적 난이도: 영구 업그레이드 합 × 레벨 hpMul
+    // (트랙 4개 × 5레벨 = 최대 20. 만렙시 +120% HP)
+    this.upgradeLevels = totalUpgradeLevels(Storage.getUpgrades());
+    const upgradeScale = 1 + 0.06 * this.upgradeLevels;
+    this.baseHpMul = (this.level.hpMul ?? 1) * upgradeScale;
+    this.hpMul = this.baseHpMul;       // 웨이브마다 startNextWave에서 갱신
+    // 스폰 간격 단축 (업그레이드 누적 → 더 빽빽한 무리)
+    this.spawnRateMul = 1 / (1 + 0.02 * this.upgradeLevels);
   }
 
   create() {
@@ -256,6 +263,7 @@ export class GameScene extends Phaser.Scene {
       this.updateHud();
     }
     this.updateVolley(dt);
+    this.updateBossHud();
 
     // 영웅↔적 접촉
     for (const e of this.enemies) {
@@ -522,10 +530,14 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = true;
     this.spawnElapsed = 0;
     this.spawnQueue = [];
+    // 웨이브 내 점진 스케일링: 후반 웨이브일수록 더 단단/빽빽
+    const waveBoost = 1 + 0.07 * this.waveIdx;
+    this.hpMul = this.baseHpMul * waveBoost;
+    const intervalMul = this.spawnRateMul / (1 + 0.04 * this.waveIdx);
     for (const u of wave.units) {
       const [kind, count, interval, delay] = u;
       for (let i = 0; i < count; i++) {
-        this.spawnQueue.push({ t: (delay ?? 0) + i * (interval ?? 0.6), kind });
+        this.spawnQueue.push({ t: (delay ?? 0) + i * (interval ?? 0.6) * intervalMul, kind });
       }
     }
     this.spawnQueue.sort((a, b) => a.t - b.t);
@@ -653,13 +665,16 @@ export class GameScene extends Phaser.Scene {
     const e = this.enemies.find(en => !en.alive);
     if (!e) return;
     e.reset(kind, this.path, this.hpMul);
-    if (kind === 'boss') this.boss = e;
+    if (kind === 'boss') {
+      this.boss = e;
+      this.spawnBossEntrance(e);
+      e._mid = false;       // 50% HP 분기 — 미니언 소환 1회
+    }
     // Gilded 적: 일반 적 중 ~5%, 보스 제외 — 황금빛 + 사망시 보너스
     e._gilded = false;
     if (kind !== 'boss' && Math.random() < 0.05) {
       e._gilded = true;
       e.body.setTint(0xffd24a);
-      // 반짝 글로우 — 시각 신호
       const halo = this.add.circle(0, 0, 22, 0xffd24a, 0.3).setDepth(e.depth - 1);
       halo._follow = e;
       this.tweens.add({
@@ -669,6 +684,62 @@ export class GameScene extends Phaser.Scene {
       this._gildedHalos = this._gildedHalos ?? [];
       this._gildedHalos.push(halo);
     }
+    return e;
+  }
+
+  updateBossHud() {
+    if (!this.boss || !this.boss.alive || !this.bossHpFill) {
+      if (this.bossHpFill && (!this.boss || !this.boss.alive)) {
+        this.bossHpFill.destroy(); this.bossHpFill = null;
+        this.bossHpBg?.destroy(); this.bossHpBg = null;
+        this.bossLabel?.destroy(); this.bossLabel = null;
+      }
+      return;
+    }
+    const ratio = Math.max(0, this.boss.hp / this.boss.maxHp);
+    const w = this.scale.width - 60;
+    this.bossHpFill.width = w * ratio;
+    // 50% 분기 — 미니언 4기 소환 + 화면 플래시
+    if (!this.boss._mid && ratio <= 0.5) {
+      this.boss._mid = true;
+      Juice.flash(this, 0xc8302d, 200);
+      Juice.shake(this, 0.014, 220);
+      Juice.popText(this, this.boss.x, this.boss.y - 30, 'ENRAGED!',
+        { color: 0xff5050, size: 16, rise: 28, duration: 700 });
+      // 미니언 — 즉시 4기 추가 스폰 (보스 위치는 path 따라 진행 중이므로 새 적은 path 시작점에서 등장)
+      for (let i = 0; i < 4; i++) {
+        this.time.delayedCall(i * 220, () => this.spawnEnemy('scout'));
+      }
+    }
+  }
+
+  spawnBossEntrance(boss) {
+    const { width } = this.scale;
+    Juice.flash(this, 0xc8302d, 320);
+    Juice.shake(this, 0.018, 320);
+    const banner = this.add.text(width / 2, 220, 'WARLORD APPROACHES', {
+      fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(900).setAlpha(0);
+    banner.setLetterSpacing?.(4);
+    this.tweens.add({
+      targets: banner, alpha: { from: 0, to: 1 }, scale: { from: 1.6, to: 1 },
+      duration: 320, ease: 'Back.Out',
+    });
+    this.tweens.add({
+      targets: banner, alpha: 0,
+      delay: 1400, duration: 380,
+      onComplete: () => banner.destroy(),
+    });
+    // 보스 HP바 (상단)
+    if (this.bossHpBg) { this.bossHpBg.destroy(); this.bossHpFill?.destroy(); this.bossLabel?.destroy(); }
+    const hbY = 86;
+    this.bossHpBg = this.add.rectangle(width / 2, hbY, width - 60, 8, 0x000000, 0.8).setDepth(901);
+    this.bossHpFill = this.add.rectangle(30, hbY, width - 60, 6, 0xc8302d, 1).setOrigin(0, 0.5).setDepth(902);
+    this.bossLabel = this.add.text(width / 2, hbY - 12, 'WARLORD GROK', {
+      fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(903).setLetterSpacing?.(3);
   }
 
   // ────────────── 사격/충돌 ──────────────
@@ -918,11 +989,23 @@ export class GameScene extends Phaser.Scene {
       color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(0.5, 0).setDepth(101).setLetterSpacing?.(2);
 
-    // 우측: 영웅 HP (♥)
+    // 우측: 영웅 HP (♥) + 난이도 별
     this.hudHp = this.add.text(width - 20, 18, '♥ 5', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
       color: '#c8302d', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(1, 0).setDepth(101);
+
+    // 난이도 표시 — 업그레이드 누적 + 레벨 hpMul 기반
+    const diffColor = this.upgradeLevels >= 12 ? '#ff5050'
+                    : this.upgradeLevels >= 6  ? '#ff8a3a'
+                    : '#9ad0a0';
+    const filled = Math.min(5, 1 + Math.floor((this.upgradeLevels + (this.level.hpMul - 1) * 5) / 3));
+    const diffStars = '★'.repeat(filled) + '☆'.repeat(Math.max(0, 5 - filled));
+    this.hudDiff = this.add.text(width - 20, 42, diffStars, {
+      fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+      color: diffColor, stroke: '#3e2e1e', strokeThickness: 2,
+    }).setOrigin(1, 0).setDepth(101);
+    this.hudDiff.setLetterSpacing?.(1);
 
     // 콤보 카운터 — 화면 중앙 상단, 활성 시에만
     this.hudCombo = this.add.text(width / 2, 50, '', {
