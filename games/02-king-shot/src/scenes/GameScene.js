@@ -1032,9 +1032,9 @@ export class GameScene extends Phaser.Scene {
         panel.fillStyle(COLORS.goldDeep, 1);
       });
 
-    // 좌측: 코인 아이콘 + 카운트
+    // 좌측: 코인 아이콘 + 카운트 (홈 아이콘 자리(0~42px) 오른쪽으로 비켜남)
     const coinIcon = this.add.graphics().setDepth(101);
-    const cx = 20, cy = 28;
+    const cx = 56, cy = 28;
     coinIcon.fillStyle(COLORS.goldDeep, 1);
     coinIcon.fillCircle(cx + 1, cy + 1, 9);
     coinIcon.fillStyle(0xffd24a, 1);
@@ -1043,7 +1043,7 @@ export class GameScene extends Phaser.Scene {
     coinIcon.fillCircle(cx, cy, 4);
     coinIcon.fillStyle(0xffffff, 0.8);
     coinIcon.fillCircle(cx - 2, cy - 2, 1.2);
-    this.hudCoins = this.add.text(34, 18, '0', {
+    this.hudCoins = this.add.text(70, 18, '0', {
       fontFamily: FONT.display, fontSize: '20px', fontStyle: '900',
       color: '#3e2e1e', stroke: '#fff5d8', strokeThickness: 1,
     }).setOrigin(0, 0).setDepth(101);
