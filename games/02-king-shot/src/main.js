@@ -13,7 +13,7 @@ const config = {
   backgroundColor: '#3a7d44',
   scale: {
     mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
     width: GAME.width,
     height: GAME.height,
     resolution: window.devicePixelRatio || 1,
