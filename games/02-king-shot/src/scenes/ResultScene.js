@@ -17,12 +17,35 @@ export class ResultScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#1a2818');
     this.cameras.main.fadeIn(380, 0, 0, 0);
 
+    // 배경 — 캐슬 일러스트를 화면 전체에 덮음(상하 미러 + 페이드로 자연스럽게 확장)
+    if (this.textures.exists('menu_bg')) {
+      // 480x480 일러스트를 화면 너비에 맞게 스케일 후 화면 위에 배치
+      this.add.image(width / 2, 0, 'menu_bg')
+        .setOrigin(0.5, 0).setDepth(0).setAlpha(0.92);
+      // 같은 일러스트를 좌우반전 + 상하반전해서 하단을 덮어 어색한 다크 그린이 노출되지 않도록
+      this.add.image(width / 2, height, 'menu_bg')
+        .setOrigin(0.5, 1).setDepth(0).setAlpha(0.55).setFlipY(true);
+    }
+    // 가독성 + 분위기 오버레이 — 승리/패배 톤
+    const overlay = this.add.graphics().setDepth(1);
+    if (s.victory) {
+      overlay.fillStyle(0x1a0d04, 0.55);
+      overlay.fillRect(0, 0, width, height);
+      overlay.fillStyle(0xf4c542, 0.07);
+      overlay.fillCircle(width / 2, 240, width * 0.75);
+    } else {
+      overlay.fillStyle(0x1a0a0a, 0.7);
+      overlay.fillRect(0, 0, width, height);
+      overlay.fillStyle(0xc8302d, 0.08);
+      overlay.fillCircle(width / 2, 240, width * 0.75);
+    }
+
     // 별 입자
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 24; i++) {
       const x = Math.random() * width;
       const y = Math.random() * height;
       const star = this.add.circle(x, y, 0.8 + Math.random() * 1.2,
-        COLORS.parchment, 0.55).setDepth(0);
+        COLORS.parchment, 0.55).setDepth(2);
       this.tweens.add({
         targets: star, alpha: { from: 0.2, to: 0.9 },
         duration: 1200 + Math.random() * 1800,
@@ -30,15 +53,27 @@ export class ResultScene extends Phaser.Scene {
       });
     }
 
-    // 상단 배너
-    const top = this.add.text(width / 2, 80, s.victory ? 'VICTORY' : 'DEFEATED', {
-      fontFamily: FONT.display, fontSize: '40px', fontStyle: '900',
+    // 상단 배너 — 양피지 박스 안에 큰 글자
+    const bannerY = 92;
+    const bannerW = 320, bannerH = 78;
+    const banner = this.add.graphics().setDepth(8);
+    banner.fillStyle(0x000000, 0.55);
+    banner.fillRoundedRect(width / 2 - bannerW / 2 + 3, bannerY - bannerH / 2 + 4, bannerW, bannerH, 12);
+    banner.fillStyle(0x2a1810, 0.92);
+    banner.fillRoundedRect(width / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 12);
+    banner.lineStyle(3, COLORS.goldDeep, 1);
+    banner.strokeRoundedRect(width / 2 - bannerW / 2, bannerY - bannerH / 2, bannerW, bannerH, 12);
+    banner.lineStyle(1, COLORS.goldHud, 0.85);
+    banner.strokeRoundedRect(width / 2 - bannerW / 2 + 4, bannerY - bannerH / 2 + 4, bannerW - 8, bannerH - 8, 10);
+
+    const top = this.add.text(width / 2, bannerY, s.victory ? 'VICTORY' : 'DEFEATED', {
+      fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
       color: s.victory ? '#f4c542' : '#c8302d',
-      stroke: '#3e2e1e', strokeThickness: 5,
+      stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(10);
-    top.setLetterSpacing?.(5);
+    top.setLetterSpacing?.(4);
     this.tweens.add({
-      targets: top, scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },
+      targets: top, scale: { from: 1.4, to: 1 }, alpha: { from: 0, to: 1 },
       duration: 460, ease: 'Back.Out',
     });
 
@@ -55,14 +90,25 @@ export class ResultScene extends Phaser.Scene {
     }
 
     if (s.isBest && s.victory) {
-      const bestTag = this.add.text(width / 2, 400, '★ NEW BEST ★', {
-        fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
-        color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
-      }).setOrigin(0.5).setDepth(10);
-      bestTag.setLetterSpacing?.(3);
+      // 스탯 패널 위쪽에 약간 기울인 리본 (Container로 묶어 회전)
+      const ribbon = this.add.container(width / 2, 386).setDepth(12);
+      const rg = this.add.graphics();
+      rg.fillStyle(0x000000, 0.55);
+      rg.fillRoundedRect(-77, -10, 158, 24, 4);
+      rg.fillStyle(0xc8302d, 1);
+      rg.fillRoundedRect(-79, -12, 158, 24, 4);
+      rg.lineStyle(1, 0xf4c542, 0.95);
+      rg.strokeRoundedRect(-79, -12, 158, 24, 4);
+      const rt = this.add.text(0, 0, '★ NEW BEST ★', {
+        fontFamily: FONT.display, fontSize: '13px', fontStyle: '900',
+        color: '#fff5d8',
+      }).setOrigin(0.5);
+      rt.setLetterSpacing?.(3);
+      ribbon.add([rg, rt]);
+      ribbon.setAngle(-4);
       this.tweens.add({
-        targets: bestTag, scale: { from: 1, to: 1.15 },
-        duration: 600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+        targets: ribbon, scale: { from: 1, to: 1.06 },
+        duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
     }
 

@@ -59,7 +59,7 @@ export class MenuScene extends Phaser.Scene {
     titleShadow.setLetterSpacing?.(4);
     const title = this.add.text(width / 2, titleY, 'CROWNHOLD', {
       fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(3);
     title.setLetterSpacing?.(4);
     this.tweens.add({

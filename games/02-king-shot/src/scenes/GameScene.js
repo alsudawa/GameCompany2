@@ -545,7 +545,7 @@ export class GameScene extends Phaser.Scene {
     // 웨이브 배너
     const big = this.add.text(this.scale.width / 2, 100, wave.label, {
       fontFamily: FONT.display, fontSize: '28px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
     this.tweens.add({
       targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
@@ -719,7 +719,7 @@ export class GameScene extends Phaser.Scene {
     Juice.shake(this, 0.018, 320);
     const banner = this.add.text(width / 2, 220, 'WARLORD APPROACHES', {
       fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
-      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 5,
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(900).setAlpha(0);
     banner.setLetterSpacing?.(4);
     this.tweens.add({
