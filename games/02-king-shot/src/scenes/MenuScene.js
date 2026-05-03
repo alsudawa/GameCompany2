@@ -41,27 +41,17 @@ export class MenuScene extends Phaser.Scene {
      [-bannerW / 2 + 10,  bannerH / 2 - 10], [bannerW / 2 - 10,  bannerH / 2 - 10]]
       .forEach(([px, py]) => banner.fillCircle(width / 2 + px, bannerY + py, 3));
 
-    // 타이틀 — 더 큰 폰트 + 다층 그림자 + 글로우
+    // 타이틀 — 외곽선만 사용 (오프셋 그림자 레이어는 정렬이 미묘하게 어긋나서 제거)
     const titleY = bannerY - 8;
-    const glow = this.add.text(width / 2, titleY, 'CROWNHOLD', {
-      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#f4c542',
-    }).setOrigin(0.5).setAlpha(0.4).setDepth(2);
-    glow.setLetterSpacing?.(4);
-    this.tweens.add({
-      targets: glow, alpha: { from: 0.3, to: 0.7 },
-      duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.InOut',
-    });
-    const titleShadow = this.add.text(width / 2 + 3, titleY + 4, 'CROWNHOLD', {
-      fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#000000',
-    }).setOrigin(0.5).setAlpha(0.7).setDepth(2);
-    titleShadow.setLetterSpacing?.(4);
     const title = this.add.text(width / 2, titleY, 'CROWNHOLD', {
       fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(3);
     title.setLetterSpacing?.(4);
+    this.tweens.add({
+      targets: title, scale: { from: 1, to: 1.04 },
+      duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
     this.tweens.add({
       targets: title, scale: { from: 1, to: 1.04 },
       duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
