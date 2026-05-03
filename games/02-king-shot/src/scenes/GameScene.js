@@ -90,7 +90,7 @@ export class GameScene extends Phaser.Scene {
     this.king = new King(this);
     const startEnd = this.path.segs[this.path.segs.length - 1].b;
     // 시작 y는 화면 하단 shop drawer를 침범하지 않도록 캡
-    const startY = Math.min(startEnd.y, height - 80);
+    const startY = Math.min(startEnd.y, height - 100);
     this.king.setPosition(startEnd.x, startY);
     this.king.setDepth(80);
     if (bonuses.hpBonus) {
@@ -168,7 +168,7 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy < (this.volley.r + 4) ** 2) return;
     }
     // 인게임 shop drawer 영역 (하단 띠) — 버튼 자체가 input 처리하므로 왕 이동만 무시
-    if (p.y > this.scale.height - 60) return;
+    if (p.y > this.scale.height - 82) return;
     const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
     const y = Phaser.Math.Clamp(p.y, 80, this.scale.height - 30);
     const c = this.clampKingArea(x, y);
@@ -178,8 +178,8 @@ export class GameScene extends Phaser.Scene {
   // 워커블 영역: path 중심선 ±KING_BAND ∪ 활성 슬롯 SLOT_REACH 버블.
   // (path band와 슬롯 버블이 겹치도록 SLOT_REACH가 충분히 크게 설정됨)
   clampKingArea(x, y) {
-    // 하단 shop drawer 영역(약 60px)을 침범하지 않도록 y 캡
-    const maxY = this.scale.height - 70;
+    // 하단 shop drawer panel 영역(약 80px)을 침범하지 않도록 y 캡
+    const maxY = this.scale.height - 88;
     if (y > maxY) y = maxY;
     const onPath = clampToPath(this.path, x, y, KING_BAND);
     const dPath = Math.hypot(x - onPath.x, y - onPath.y);
@@ -594,7 +594,31 @@ export class GameScene extends Phaser.Scene {
   // 레벨이 올라갈수록 비용 증가, 캡 5
   buildUpgradeShop() {
     const { width, height } = this.scale;
-    const drawerY = height - 30;
+    const drawerY = height - 52;          // 화면 바닥에서 살짝 떨어트려 잘림 방지
+    // 양피지 풀-너비 패널 (HUD와 톤 맞춤)
+    const panelH = 60;
+    const panel = this.add.graphics().setDepth(101);
+    panel.fillStyle(0x000000, 0.55);
+    panel.fillRect(0, drawerY - panelH / 2 - 1, width, panelH + 4);
+    panel.fillStyle(COLORS.woodDark, 1);
+    panel.fillRect(0, drawerY - panelH / 2, width, panelH);
+    panel.fillStyle(COLORS.parchment, 0.96);
+    panel.fillRect(4, drawerY - panelH / 2 + 4, width - 8, panelH - 8);
+    panel.fillStyle(COLORS.goldHud, 0.7);
+    panel.fillRect(4, drawerY - panelH / 2 + panelH - 6, width - 8, 2);
+    panel.fillStyle(COLORS.parchmentDim, 0.4);
+    panel.fillRect(4, drawerY - panelH / 2 + 4, width - 8, 4);
+    // 모서리 골드 못
+    panel.fillStyle(COLORS.goldDeep, 1);
+    [[10, drawerY - panelH / 2 + 10], [width - 10, drawerY - panelH / 2 + 10],
+     [10, drawerY + panelH / 2 - 10], [width - 10, drawerY + panelH / 2 - 10]]
+      .forEach(([px, py]) => {
+        panel.fillCircle(px, py, 2.5);
+        panel.fillStyle(COLORS.goldHud, 1);
+        panel.fillCircle(px, py, 1.5);
+        panel.fillStyle(COLORS.goldDeep, 1);
+      });
+
     const items = [
       { id: 'damage', icon: '⚔', color: 0xff8a3a, name: 'DMG',
         baseCost: 35,
@@ -620,29 +644,28 @@ export class GameScene extends Phaser.Scene {
     this.shopLevels = {};
     items.forEach(it => { this.shopLevels[it.id] = 0; });
 
-    const slotW = 56, slotH = 50, gap = 6;
+    const slotW = 64, slotH = 46, gap = 6;
+    // 우측 볼리 버튼(반경 32 + 여백 16) 자리는 비워두고 좌측에 배치
+    const volleyReserve = 80;
     const totalW = items.length * slotW + (items.length - 1) * gap;
-    const startX = (width - totalW) / 2 + slotW / 2;
+    const startX = (width - volleyReserve - totalW) / 2 + slotW / 2;
     this.shopButtons = [];
 
     items.forEach((it, i) => {
       const cx = startX + i * (slotW + gap);
       const c = this.add.container(cx, drawerY).setDepth(102);
       const bgG = this.add.graphics();
-      const lvLabel = this.add.text(-slotW / 2 + 5, -slotH / 2 + 4, '', {
-        fontFamily: FONT.mono, fontSize: '8px', fontStyle: '700',
-        color: '#fff5d8',
-      }).setOrigin(0, 0).setDepth(2);
-      const iconT = this.add.text(0, -8, it.icon, {
+      const lvDot = this.add.graphics();
+      const iconT = this.add.text(0, -10, it.icon, {
         fontFamily: FONT.display, fontSize: '18px', fontStyle: '900',
         color: Phaser.Display.Color.IntegerToColor(it.color).rgba,
         stroke: '#3e2e1e', strokeThickness: 2,
       }).setOrigin(0.5);
       const cost = this.add.text(0, 12, '', {
         fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
-        color: '#fff5d8',
-      }).setOrigin(0.5);
-      c.add([bgG, iconT, lvLabel, cost]);
+        color: '#3e2e1e',
+      }).setOrigin(0.5).setLetterSpacing?.(1);
+      c.add([bgG, iconT, lvDot, cost]);
       c.setSize(slotW, slotH);
       c.setInteractive({ useHandCursor: true });
       const draw = () => {
@@ -651,24 +674,32 @@ export class GameScene extends Phaser.Scene {
         const price = Math.round(it.baseCost * Math.pow(1.6, lv));
         const can = !maxed && this.coinsEarned >= price;
         bgG.clear();
-        bgG.fillStyle(0x000000, 0.55);
-        bgG.fillRoundedRect(-slotW / 2 + 2, -slotH / 2 + 2, slotW, slotH, 6);
-        bgG.fillStyle(maxed ? 0x6a5a3a : (can ? 0x4a2a14 : 0x2a1810), 1);
-        bgG.fillRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 6);
-        bgG.lineStyle(1.5, it.color, can || maxed ? 0.95 : 0.45);
-        bgG.strokeRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 6);
-        iconT.setAlpha(can || maxed ? 1 : 0.5);
+        bgG.fillStyle(0x000000, 0.45);
+        bgG.fillRoundedRect(-slotW / 2 + 2, -slotH / 2 + 2, slotW, slotH, 5);
+        bgG.fillStyle(maxed ? 0xc89438 : 0xfff4d8, 0.95);
+        bgG.fillRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 5);
+        bgG.lineStyle(1.5, COLORS.woodDark, 1);
+        bgG.strokeRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 5);
+        bgG.lineStyle(1, it.color, can || maxed ? 0.95 : 0.45);
+        bgG.strokeRoundedRect(-slotW / 2 + 2, -slotH / 2 + 2, slotW - 4, slotH - 4, 4);
+        iconT.setAlpha(can || maxed ? 1 : 0.45);
+        cost.setAlpha(can || maxed ? 1 : 0.55);
         if (maxed) {
           cost.setText('MAX');
-          cost.setColor('#f4c542');
+          cost.setColor('#3e2e1e');
         } else {
           cost.setText('⛁' + price);
-          cost.setColor(can ? '#fff5d8' : '#a89878');
+          cost.setColor(can ? '#3e2e1e' : '#7a5a3a');
         }
-        // 레벨 핍 (작은 점 — 좌상단)
-        lvLabel.setText('●'.repeat(lv) + '○'.repeat(it.maxLevel - lv));
-        lvLabel.setColor(it.color === 0xc8302d ? '#ff8a8a' : '#f4c542');
-        lvLabel.setFontSize(7);
+        // 레벨 핍 — 슬롯 상단에 작은 점 lv개
+        lvDot.clear();
+        for (let k = 0; k < it.maxLevel; k++) {
+          const px = -((it.maxLevel - 1) / 2) * 5 + k * 5;
+          const py = -slotH / 2 + 4;
+          const filled = k < lv;
+          lvDot.fillStyle(filled ? it.color : 0xa89878, filled ? 1 : 0.55);
+          lvDot.fillCircle(px, py, 1.8);
+        }
       };
       draw();
       c.on('pointerdown', () => {
@@ -676,7 +707,6 @@ export class GameScene extends Phaser.Scene {
         if (lv >= it.maxLevel) return;
         const price = Math.round(it.baseCost * Math.pow(1.6, lv));
         if (this.coinsEarned < price) {
-          // 부족 — 흔들림
           this.tweens.add({ targets: c, x: cx - 3, duration: 50, yoyo: true, repeat: 2,
             onComplete: () => { c.x = cx; } });
           Audio.miss?.();
@@ -686,9 +716,8 @@ export class GameScene extends Phaser.Scene {
         this.shopLevels[it.id] = lv + 1;
         it.apply();
         Audio.purchase?.();
-        Juice.popText(this, cx, drawerY - 40, it.desc,
+        Juice.popText(this, cx, drawerY - 36, it.desc,
           { color: it.color, size: 11, rise: 22, duration: 700 });
-        // 시각적 강조
         this.tweens.add({ targets: c, scaleX: 1.15, scaleY: 1.15, duration: 100, yoyo: true });
         this.shopButtons.forEach(b => b.draw());
         this.updateHud();
@@ -1054,8 +1083,8 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(101).setAlpha(0);
     this.hudCombo.setLetterSpacing?.(2);
 
-    // 로얄 볼리 HUD 버튼 — shop drawer 위쪽 (우측)
-    this.makeVolleyButton(width - 36, this.scale.height - 110);
+    // 로얄 볼리 HUD 버튼 — shop drawer 같은 행 우측
+    this.makeVolleyButton(width - 36, this.scale.height - 52);
 
     // 인게임 업그레이드 shop 드로어 (하단 가운데)
     this.buildUpgradeShop();
