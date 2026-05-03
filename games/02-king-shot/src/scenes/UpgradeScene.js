@@ -26,7 +26,7 @@ export class UpgradeScene extends Phaser.Scene {
     // 타이틀
     const title = this.add.text(width / 2, 50, 'THE FORGE', {
       fontFamily: FONT.display, fontSize: '34px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 5,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5);
     title.setLetterSpacing?.(5);
     this.add.text(width / 2, 84, 'PERMANENT ROYAL UPGRADES', {

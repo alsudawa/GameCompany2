@@ -69,6 +69,20 @@ export class BootScene extends Phaser.Scene {
       await IAP.ensureReady();
     } catch (e) { console.warn('IAP init', e); }
 
+    // 폰트 로딩 대기 — Cinzel/Rajdhani가 늦게 로드되어 첫 텍스트가 폴백 폰트로 그려지는 문제 방지
+    try {
+      if (document.fonts?.load) {
+        await Promise.all([
+          document.fonts.load('900 24px "Cinzel"'),
+          document.fonts.load('700 24px "Cinzel"'),
+          document.fonts.load('700 16px "Rajdhani"'),
+          document.fonts.load('500 14px "Rajdhani"'),
+          document.fonts.load('700 14px "JetBrains Mono"'),
+        ]);
+        await document.fonts.ready;
+      }
+    } catch (e) { /* 폰트 실패해도 게임 진행 */ }
+
     this.scene.start('MenuScene');
   }
 }
