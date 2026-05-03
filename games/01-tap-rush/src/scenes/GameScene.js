@@ -441,7 +441,7 @@ export class GameScene extends Phaser.Scene {
           duration: 700, onComplete: () => t.destroy(),
         });
         Juice.ring(this, center.x, center.y, { color: COLORS.cyan, radius: 180, count: 1 });
-        Audio.tap();
+        Audio.readyTone(n);
         n--;
         this.time.delayedCall(700, tick);
       } else {
@@ -455,6 +455,7 @@ export class GameScene extends Phaser.Scene {
         });
         Juice.ring(this, center.x, center.y, { color: COLORS.gold, radius: 260, count: 2, duration: 600 });
         Juice.flash(this, COLORS.gold, 140);
+        Juice.shake(this, 0.016, 280);
         Audio.fanfare();
         Audio.playBgm?.(this.stage.bgm, { fadeIn: 0.6 });
         this.isPlaying = true;
@@ -476,8 +477,19 @@ export class GameScene extends Phaser.Scene {
       // 마지막 5초 긴박감
       if (sec <= 5 && sec > 0) {
         this.hudTime.setColor(sec <= 3 ? '#ff4d6d' : '#ffd24a');
+        // 하트비트: sec이 낮을수록 박자 빠르게 (500ms→250ms)
+        const beepInterval = sec <= 2 ? 250 : sec <= 3 ? 350 : 500;
+        if (!this._lastBeepSec || this._lastBeepSec !== sec) {
+          this._lastBeepSec = sec;
+          this._nextBeepAt = 0;
+        }
+        if (!this._nextBeepAt || time >= this._nextBeepAt) {
+          Audio.heartbeat(sec);
+          this._nextBeepAt = time + beepInterval;
+        }
       } else {
         this.hudTime.setColor('#e8ecf5');
+        this._lastBeepSec = null;
       }
 
       // 레벨 진행 체크

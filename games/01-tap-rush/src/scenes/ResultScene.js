@@ -4,12 +4,21 @@ import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { UI, FONT } from '../../../../shared/ui.js';
 import { GRADE_CUTS, COLORS } from '../config.js';
+import { Storage } from '../../../../shared/storage.js';
 
 function gradeFor(score) {
   if (score >= GRADE_CUTS.S) return { grade: 'S', color: COLORS.gold,    label: 'PERFECT' };
   if (score >= GRADE_CUTS.A) return { grade: 'A', color: COLORS.magenta, label: 'EXCELLENT' };
   if (score >= GRADE_CUTS.B) return { grade: 'B', color: COLORS.cyan,    label: 'GOOD' };
   return                          { grade: 'C', color: 0x6b708f,         label: 'KEEP TRYING' };
+}
+
+function nextGradeHint(score, g) {
+  if (g.grade === 'S') return null;
+  const targets = { C: GRADE_CUTS.B, B: GRADE_CUTS.A, A: GRADE_CUTS.S };
+  const labels  = { C: 'B', B: 'A', A: 'S' };
+  const diff = targets[g.grade] - score;
+  return `GRADE ${labels[g.grade]}  +${diff.toLocaleString()} pts`;
 }
 
 export class ResultScene extends Phaser.Scene {
@@ -31,6 +40,7 @@ export class ResultScene extends Phaser.Scene {
 
     const d = this.data_;
     const g = gradeFor(d.score);
+    const daily = Storage.claimDailyBonus();
 
     // 상단 섹션 헤더
     this.add.text(width / 2, 30, '— SESSION COMPLETE —', {
@@ -51,10 +61,32 @@ export class ResultScene extends Phaser.Scene {
       color: '#' + g.color.toString(16).padStart(6, '0'),
     }).setOrigin(0.5).setLetterSpacing(5);
 
+    // 다음 등급까지 힌트
+    const hint = nextGradeHint(d.score, g);
+    if (hint) {
+      this.add.text(width / 2, height * 0.50, hint, {
+        fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+        color: '#8a8aa8',
+      }).setOrigin(0.5).setLetterSpacing(3);
+    }
+
     // 구분선
     const sep = this.add.graphics();
     sep.lineStyle(1, 0x00e5ff, 0.5);
     sep.strokeLineShape(new Phaser.Geom.Line(width * 0.15, height * 0.56, width * 0.85, height * 0.56));
+
+    // 일일 접속 보너스 뱃지
+    if (daily.isNewDay) {
+      const bonusLabel = `★  DAY ${daily.streakDays} STREAK  +${daily.bonusCoins} COINS`;
+      const tag = this.add.text(width / 2, height * 0.53, bonusLabel, {
+        fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+        color: '#ffd24a',
+      }).setOrigin(0.5).setLetterSpacing(2);
+      this.tweens.add({
+        targets: tag, alpha: { from: 0.6, to: 1 },
+        duration: 800, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+      });
+    }
 
     // NEW BEST 뱃지
     if (d.isBest) {

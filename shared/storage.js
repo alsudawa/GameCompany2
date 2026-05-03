@@ -15,6 +15,8 @@ const DEFAULT_PROFILE = {
   upgrades: {},            // { 'kingHp': 2, 'bowDmg': 4, ... } 영구 업그레이드 레벨
   achievements: [],        // ['first_combo_10', ...]
   lastLoginISO: null,
+  streakDays: 0,           // 연속 접속 일수
+  streakLastDate: null,    // 'YYYY-MM-DD' 마지막 접속일
   firstPurchaseDone: false,
   seasonPass: { active: false, expiresISO: null, claimed: [] },
 };
@@ -133,5 +135,24 @@ export const Storage = {
   update(patch) {
     const p = this.load();
     this.save({ ...p, ...patch });
+  },
+
+  // 일일 접속 체크 — 새 날이면 스트릭 갱신 + 보너스 코인 지급.
+  // 반환: { isNewDay, streakDays, bonusCoins }
+  claimDailyBonus() {
+    const BONUS_COINS = 100;
+    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const p = this.load();
+    if (p.streakLastDate === today) {
+      return { isNewDay: false, streakDays: p.streakDays || 1, bonusCoins: 0 };
+    }
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const streak = (p.streakLastDate === yesterday) ? (p.streakDays || 0) + 1 : 1;
+    p.streakDays = streak;
+    p.streakLastDate = today;
+    p.lastLoginISO = new Date().toISOString();
+    p.coins = (p.coins || 0) + BONUS_COINS;
+    this.save(p);
+    return { isNewDay: true, streakDays: streak, bonusCoins: BONUS_COINS };
   },
 };

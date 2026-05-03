@@ -474,4 +474,19 @@ export const Audio = {
       tone({ freq: f, duration: 0.16, type: 'triangle', gain: 0.065, delay: i * 0.07 }));
     tone({ freq: 1318.5, duration: 0.35, type: 'sine', gain: 0.05, delay: 0.28 });
   },
+
+  // READY TONE — 카운트다운 각 숫자마다 상승 피치로 긴장 유도
+  readyTone(n) {
+    const freqs = { 3: 261.63, 2: 392.00, 1: 587.33 };
+    const f = freqs[n] ?? 440;
+    tone({ freq: f, duration: 0.14, type: 'square', gain: 0.055, sweepTo: f * 1.15 });
+    tone({ freq: f * 2, duration: 0.1, type: 'sine', gain: 0.025, delay: 0.04 });
+  },
+
+  // HEARTBEAT — 마지막 5초 긴박감. sec이 낮을수록 피치 상승
+  heartbeat(sec) {
+    const freq = 500 + (5 - sec) * 90;
+    tone({ freq, duration: 0.08, type: 'sine', gain: 0.045 });
+    tone({ freq: freq * 1.5, duration: 0.05, type: 'sine', gain: 0.02, delay: 0.05 });
+  },
 };

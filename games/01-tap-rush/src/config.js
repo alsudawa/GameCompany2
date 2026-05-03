@@ -23,9 +23,9 @@ export const SPEED = {
 };
 
 export const PROB = {
-  rare: 0.12,
+  rare: 0.15,       // 0.12→0.15: 레어 출현 빈도 향상(~6초→~5초마다)
   bombStart: 0.06,
-  bombEnd: 0.18,
+  bombEnd: 0.15,    // 0.18→0.15: 최고 레벨 폭탄 완화
 };
 
 // 세션 중 레벨 진행. `at`(초)에 진입, 해당 시점부터 아래 설정 적용.
@@ -35,18 +35,18 @@ export const LEVELS = [
   { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09 },
   { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
   { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
-  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
+  { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.12 },
 ];
 
 export const COMBO = {
-  windowMs: 720,
+  windowMs: 850,    // 720→850ms: 콤보 유지 여유 확대로 플로우 향상
   bonusPerStep: 0.09,
   maxMul: 6.0,
 };
 
 export const SCORE = {
   normal: 10,
-  rare: 50,
+  rare: 60,         // 50→60: 레어 점수 상향으로 보상감 강화
 };
 
 export const GEMS_PER_RARE = 1;
@@ -60,8 +60,8 @@ export const COMBO_RANKS = [
   { at: 40, label: 'GOD LIKE!', color: 0xffffff },
 ];
 
-// 세션 중 점수 마일스톤 (달성 시 팡파르)
-export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
+// 세션 중 점수 마일스톤 (달성 시 팡파르) — 실제 점수 분포에 맞게 재조정
+export const SCORE_MILESTONES = [400, 1000, 2200, 4500, 8000, 13000];
 
 export const GRADE_CUTS = {
   S: 25000,   // 밸런스 재조정 (세션 짧아짐 반영)
@@ -74,8 +74,8 @@ export const GRADE_CUTS = {
 // 'good' 바깥을 탭하면 아예 무효(EARLY/LATE) — 오브는 계속 낙하.
 export const JUDGMENT = {
   lineYRatio: 0.72,
-  perfect: 22,   // 이 범위 안 → PERFECT
-  great:   50,   // PERFECT 바깥, 이 범위 안 → GREAT
+  perfect: 32,   // 22→32px: PERFECT 판정창 확대 (~50ms 반응 여유)
+  great:   65,   // 50→65px: GREAT 판정창 확대
   good:    110,  // 이 범위 안 → GOOD, 바깥은 탭 무효
   perfectMul: 1.7,
   greatMul:   1.3,
