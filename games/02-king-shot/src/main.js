@@ -16,12 +16,13 @@ const config = {
     autoCenter: Phaser.Scale.CENTER_HORIZONTALLY,
     width: GAME.width,
     height: GAME.height,
-    resolution: window.devicePixelRatio || 1,
   },
   render: {
     pixelArt: false,
     antialias: true,
-    roundPixels: true,
+    antialiasGL: true,
+    // roundPixels: true는 stroke된 텍스트 픽셀을 어긋나게 만들어 "그림자" 잔상이 보임 → false
+    roundPixels: false,
   },
   input: { activePointers: 4 },
   scene: [BootScene, MenuScene, GameScene, ResultScene, UpgradeScene],

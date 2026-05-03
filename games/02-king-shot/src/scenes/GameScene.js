@@ -201,7 +201,7 @@ export class GameScene extends Phaser.Scene {
   runCountdown() {
     const big = this.add.text(this.scale.width / 2, this.scale.height / 2, '3', {
       fontFamily: FONT.display, fontSize: '120px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 6,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(500);
     let n = 3;
     const tick = () => {
@@ -551,7 +551,7 @@ export class GameScene extends Phaser.Scene {
     // 웨이브 배너
     const big = this.add.text(this.scale.width / 2, 100, wave.label, {
       fontFamily: FONT.display, fontSize: '28px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(600).setLetterSpacing?.(3);
     this.tweens.add({
       targets: big, scale: { from: 1.5, to: 1 }, alpha: { from: 0, to: 1 },
@@ -788,7 +788,7 @@ export class GameScene extends Phaser.Scene {
     Juice.shake(this, 0.018, 320);
     const banner = this.add.text(width / 2, 220, 'WARLORD APPROACHES', {
       fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
-      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(900).setAlpha(0);
     banner.setLetterSpacing?.(4);
     this.tweens.add({
@@ -807,7 +807,7 @@ export class GameScene extends Phaser.Scene {
     this.bossHpFill = this.add.rectangle(30, hbY, width - 60, 6, 0xc8302d, 1).setOrigin(0, 0.5).setDepth(902);
     this.bossLabel = this.add.text(width / 2, hbY - 12, 'WARLORD GROK', {
       fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
-      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(903).setLetterSpacing?.(3);
   }
 
@@ -895,7 +895,7 @@ export class GameScene extends Phaser.Scene {
                 : '#fff5d8';
     const t = this.add.text(x + (Math.random() - 0.5) * 12, y, String(n), {
       fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
-      color, stroke: '#3e2e1e', strokeThickness: 3,
+      color, stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(925);
     this.tweens.add({
       targets: t, y: y - 22, alpha: { from: 1, to: 0 },
@@ -1079,7 +1079,7 @@ export class GameScene extends Phaser.Scene {
     // 콤보 카운터 — 화면 중앙 상단, 활성 시에만
     this.hudCombo = this.add.text(width / 2, 50, '', {
       fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
-      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 4,
+      color: '#ff8a3a', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setDepth(101).setAlpha(0);
     this.hudCombo.setLetterSpacing?.(2);
 
@@ -1101,7 +1101,7 @@ export class GameScene extends Phaser.Scene {
     const cdArc = this.add.graphics();
     const icon = this.add.text(0, -2, '⟁', {
       fontFamily: FONT.display, fontSize: '30px', fontStyle: '900',
-      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5);
     const label = this.add.text(0, 18, 'VOLLEY', {
       fontFamily: FONT.mono, fontSize: '8px', fontStyle: '700',
@@ -1230,7 +1230,7 @@ export class GameScene extends Phaser.Scene {
     Juice.flash(this, COLORS.goldHud, 380);
     const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'VICTORY', {
       fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 6,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(700).setLetterSpacing?.(6);
     this.tweens.add({
       targets: big, scale: { from: 1.8, to: 1 }, alpha: { from: 0, to: 1 },
@@ -1247,7 +1247,7 @@ export class GameScene extends Phaser.Scene {
     Juice.flash(this, COLORS.capeRed, 480);
     const big = this.add.text(this.scale.width / 2, this.scale.height / 2, 'THRONE FALLEN', {
       fontFamily: FONT.display, fontSize: '38px', fontStyle: '900',
-      color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 6,
+      color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(700).setLetterSpacing?.(4);
     this.tweens.add({
       targets: big, scale: { from: 1.6, to: 1 }, alpha: { from: 0, to: 1 },

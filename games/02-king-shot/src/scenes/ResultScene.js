@@ -69,7 +69,8 @@ export class ResultScene extends Phaser.Scene {
     const top = this.add.text(width / 2, bannerY, s.victory ? 'VICTORY' : 'DEFEATED', {
       fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
       color: s.victory ? '#f4c542' : '#c8302d',
-      stroke: '#3e2e1e', strokeThickness: 3,
+      stroke: '#3e2e1e', strokeThickness: 2,
+      padding: { x: 3, y: 3 },
     }).setOrigin(0.5).setDepth(10);
     top.setLetterSpacing?.(4);
     this.tweens.add({
