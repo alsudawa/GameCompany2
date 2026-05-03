@@ -26,7 +26,7 @@ export class UpgradeScene extends Phaser.Scene {
     // 타이틀
     const title = this.add.text(width / 2, 50, 'THE FORGE', {
       fontFamily: FONT.display, fontSize: '34px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5);
     title.setLetterSpacing?.(5);
     this.add.text(width / 2, 84, 'PERMANENT ROYAL UPGRADES', {
@@ -37,7 +37,7 @@ export class UpgradeScene extends Phaser.Scene {
     // 코인 보유량
     this.coinsText = this.add.text(width - 16, 24, '', {
       fontFamily: FONT.display, fontSize: '18px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(1, 0.5);
     this.refreshCoins();
 
@@ -77,7 +77,7 @@ export class UpgradeScene extends Phaser.Scene {
     const icon = this.add.text(-w / 2 + 32, 0, upgrade.icon, {
       fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
       color: Phaser.Display.Color.IntegerToColor(upgrade.color).rgba,
-      stroke: '#3e2e1e', strokeThickness: 3,
+      stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5);
     c.add(icon);
 
@@ -189,7 +189,7 @@ export class UpgradeScene extends Phaser.Scene {
     bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 8);
     const t = this.add.text(0, 0, '◂ MENU', {
       fontFamily: FONT.display, fontSize: '17px', fontStyle: '900',
-      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 2,
     }).setOrigin(0.5).setLetterSpacing?.(3);
     c.add([bg, t]);
     c.setSize(w, h);

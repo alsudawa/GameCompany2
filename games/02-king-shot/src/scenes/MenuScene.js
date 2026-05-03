@@ -45,7 +45,8 @@ export class MenuScene extends Phaser.Scene {
     const titleY = bannerY - 8;
     const title = this.add.text(width / 2, titleY, 'CROWNHOLD', {
       fontFamily: FONT.display, fontSize: '54px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
+      padding: { x: 4, y: 4 },
     }).setOrigin(0.5).setDepth(3);
     title.setLetterSpacing?.(4);
     this.tweens.add({
@@ -337,7 +338,8 @@ export class MenuScene extends Phaser.Scene {
     c.add(bg);
     const t = this.add.text(0, 0, '⚔ DEFEND', {
       fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
-      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 4,
+      color: '#fff5d8', stroke: '#3e2e1e', strokeThickness: 2,
+      padding: { x: 3, y: 3 },
     }).setOrigin(0.5).setLetterSpacing?.(4);
     c.add(t);
     c.setSize(w, h);
@@ -375,7 +377,8 @@ export class MenuScene extends Phaser.Scene {
     c.add(bg);
     const t = this.add.text(0, 0, '⚒ THE FORGE', {
       fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
+      padding: { x: 2, y: 2 },
     }).setOrigin(0.5).setLetterSpacing?.(3);
     c.add(t);
     c.setSize(w, h);
