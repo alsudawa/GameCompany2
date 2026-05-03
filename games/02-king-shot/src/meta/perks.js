@@ -36,36 +36,37 @@ export const PERKS = [
     id: 'damage',
     icon: '⚔', color: 0xff8a3a,
     name: 'SHARP ARROWS',
-    desc: '활 데미지 +25%',
+    desc: '활 데미지 +18%',
     apply(scene) {
-      scene.king.weapon.damage = Math.round(scene.king.weapon.damage * 1.25);
+      scene.king.weapon.damage = Math.round(scene.king.weapon.damage * 1.18);
     },
   },
   {
     id: 'firerate',
     icon: '➶', color: 0xfff4a0,
     name: 'QUICK DRAW',
-    desc: '연사 속도 +25%',
+    desc: '연사 속도 +18%',
     apply(scene) {
-      scene.king.weapon.fireRate *= 0.80;
+      scene.king.weapon.fireRate *= 0.85;
     },
   },
   {
     id: 'multishot',
     icon: '⫶', color: 0xc89438,
     name: 'TWIN ARROWS',
-    desc: '화살 동시 발사 +1',
+    desc: '화살 동시 발사 +1 (개당 데미지 −20%)',
     apply(scene) {
       scene.king.weapon.multishot += 1;
+      scene.king.weapon.damage = Math.round(scene.king.weapon.damage * 0.80);
     },
   },
   {
     id: 'magnet',
     icon: '◉', color: 0xffd24a,
     name: 'GREED',
-    desc: '코인/보석 자석 +60%',
+    desc: '코인/보석 자석 +40%',
     apply(scene) {
-      scene.king.magnetRadius = Math.round(scene.king.magnetRadius * 1.6);
+      scene.king.magnetRadius = Math.round(scene.king.magnetRadius * 1.4);
     },
   },
   {
