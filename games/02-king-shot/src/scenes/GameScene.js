@@ -9,7 +9,6 @@ import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
 import { buildPath, tilePxCenter, clampToPath } from '../maps/path.js';
-import { rollPerks } from '../meta/perks.js';
 import { computeBonuses, totalUpgradeLevels } from '../meta/upgrades.js';
 import { King } from '../entities/King.js';
 import { Enemy } from '../entities/Enemy.js';
@@ -90,7 +89,9 @@ export class GameScene extends Phaser.Scene {
     const bonuses = computeBonuses(Storage.getUpgrades());
     this.king = new King(this);
     const startEnd = this.path.segs[this.path.segs.length - 1].b;
-    this.king.setPosition(startEnd.x, startEnd.y);
+    // 시작 y는 화면 하단 shop drawer를 침범하지 않도록 캡
+    const startY = Math.min(startEnd.y, height - 80);
+    this.king.setPosition(startEnd.x, startY);
     this.king.setDepth(80);
     if (bonuses.hpBonus) {
       this.king.maxHp += bonuses.hpBonus;
@@ -160,12 +161,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   onPointer(p) {
-    // 볼리 버튼 영역 위에서 누르면 왕 이동 무시 (버튼 자체 onpointerdown이 처리)
+    // 볼리 버튼 영역
     if (this.volley) {
       const dx = p.x - this.volley.container.x;
       const dy = p.y - this.volley.container.y;
       if (dx * dx + dy * dy < (this.volley.r + 4) ** 2) return;
     }
+    // 인게임 shop drawer 영역 (하단 띠) — 버튼 자체가 input 처리하므로 왕 이동만 무시
+    if (p.y > this.scale.height - 60) return;
     const x = Phaser.Math.Clamp(p.x, 30, this.scale.width - 30);
     const y = Phaser.Math.Clamp(p.y, 80, this.scale.height - 30);
     const c = this.clampKingArea(x, y);
@@ -175,6 +178,9 @@ export class GameScene extends Phaser.Scene {
   // 워커블 영역: path 중심선 ±KING_BAND ∪ 활성 슬롯 SLOT_REACH 버블.
   // (path band와 슬롯 버블이 겹치도록 SLOT_REACH가 충분히 크게 설정됨)
   clampKingArea(x, y) {
+    // 하단 shop drawer 영역(약 60px)을 침범하지 않도록 y 캡
+    const maxY = this.scale.height - 70;
+    if (y > maxY) y = maxY;
     const onPath = clampToPath(this.path, x, y, KING_BAND);
     const dPath = Math.hypot(x - onPath.x, y - onPath.y);
     if (dPath <= 0.5) return { x, y };
@@ -572,93 +578,127 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = 999;          // 퍽 선택 전까지 정지
-      this.showPerkCards();
-      // 보너스 코인 (드롭 형태로 영웅 근처에)
+      this.waveBreather = WAVE_BREATHER;
+      // 보너스 보석 (드롭 형태로 영웅 근처에)
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
                        this.king.y + (Math.random() - 0.5) * 60, 5);
       }
+      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+        '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
     }
   }
 
-  showPerkCards() {
+  // 인게임 업그레이드 — 코인 소비, 타워와 같은 통화
+  // 레벨이 올라갈수록 비용 증가, 캡 5
+  buildUpgradeShop() {
     const { width, height } = this.scale;
-    const perks = rollPerks(3);
-    const overlay = this.add.container(0, 0).setDepth(950);
-    const dim = this.add.rectangle(0, 0, width, height, 0x000000, 0.7).setOrigin(0);
-    overlay.add(dim);
-    const title = this.add.text(width / 2, 110, 'CHOOSE A BLESSING', {
-      fontFamily: FONT.display, fontSize: '22px', fontStyle: '900',
-      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 4,
-    }).setOrigin(0.5);
-    title.setLetterSpacing?.(4);
-    overlay.add(title);
-    const sub = this.add.text(width / 2, 142, 'WAVE COMPLETE · PICK ONE', {
-      fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
-      color: '#f4e8c8',
-    }).setOrigin(0.5).setLetterSpacing?.(4);
-    overlay.add(sub);
+    const drawerY = height - 30;
+    const items = [
+      { id: 'damage', icon: '⚔', color: 0xff8a3a, name: 'DMG',
+        baseCost: 35,
+        apply: () => { this.king.weapon.damage = Math.round(this.king.weapon.damage * 1.18); },
+        desc: 'BOW DAMAGE +18%', maxLevel: 5 },
+      { id: 'firerate', icon: '➶', color: 0xfff4a0, name: 'RATE',
+        baseCost: 40,
+        apply: () => { this.king.weapon.fireRate *= 0.85; },
+        desc: 'FIRE RATE +18%', maxLevel: 5 },
+      { id: 'heal', icon: '♥', color: 0xc8302d, name: 'HEAL',
+        baseCost: 25,
+        apply: () => {
+          this.king.maxHp += 1;
+          this.king.hp = this.king.maxHp;
+          this.updateHud();
+        },
+        desc: 'MAX HP +1, FULL HEAL', maxLevel: 8 },
+      { id: 'magnet', icon: '◉', color: 0xffd24a, name: 'PULL',
+        baseCost: 20,
+        apply: () => { this.king.magnetRadius = Math.round(this.king.magnetRadius * 1.3); },
+        desc: 'COIN MAGNET +30%', maxLevel: 4 },
+    ];
+    this.shopLevels = {};
+    items.forEach(it => { this.shopLevels[it.id] = 0; });
 
-    const cardW = 130, cardH = 180, gap = 14;
-    const totalW = cardW * 3 + gap * 2;
-    const startX = (width - totalW) / 2;
-    perks.forEach((perk, i) => {
-      const cx = startX + i * (cardW + gap) + cardW / 2;
-      const cy = height / 2;
-      const card = this.add.container(cx, cy);
-      // 그림자 + 양피지 카드
-      const sh = this.add.graphics();
-      sh.fillStyle(0x000000, 0.55);
-      sh.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 4, cardW, cardH, 12);
-      const bg = this.add.graphics();
-      bg.fillStyle(COLORS.parchment, 0.97);
-      bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
-      bg.fillStyle(COLORS.parchmentDim, 1);
-      bg.fillRect(-cardW / 2, -cardH / 2, cardW, 8);
-      bg.fillRect(-cardW / 2, cardH / 2 - 8, cardW, 8);
-      bg.lineStyle(3, COLORS.woodDark, 1);
-      bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 12);
-      bg.lineStyle(1, perk.color, 0.9);
-      bg.strokeRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW - 6, cardH - 6, 10);
-      // 큰 아이콘
-      const icon = this.add.text(0, -42, perk.icon, {
-        fontFamily: FONT.display, fontSize: '40px', fontStyle: '900',
-        color: Phaser.Display.Color.IntegerToColor(perk.color).rgba,
-        stroke: '#3e2e1e', strokeThickness: 3,
+    const slotW = 56, slotH = 50, gap = 6;
+    const totalW = items.length * slotW + (items.length - 1) * gap;
+    const startX = (width - totalW) / 2 + slotW / 2;
+    this.shopButtons = [];
+
+    items.forEach((it, i) => {
+      const cx = startX + i * (slotW + gap);
+      const c = this.add.container(cx, drawerY).setDepth(102);
+      const bgG = this.add.graphics();
+      const lvLabel = this.add.text(-slotW / 2 + 5, -slotH / 2 + 4, '', {
+        fontFamily: FONT.mono, fontSize: '8px', fontStyle: '700',
+        color: '#fff5d8',
+      }).setOrigin(0, 0).setDepth(2);
+      const iconT = this.add.text(0, -8, it.icon, {
+        fontFamily: FONT.display, fontSize: '18px', fontStyle: '900',
+        color: Phaser.Display.Color.IntegerToColor(it.color).rgba,
+        stroke: '#3e2e1e', strokeThickness: 2,
       }).setOrigin(0.5);
-      // 이름
-      const name = this.add.text(0, 4, perk.name, {
-        fontFamily: FONT.display, fontSize: '13px', fontStyle: '900',
-        color: '#3e2e1e',
-      }).setOrigin(0.5).setLetterSpacing?.(2);
-      // 설명
-      const desc = this.add.text(0, 38, perk.desc, {
-        fontFamily: FONT.body, fontSize: '11px', fontStyle: '600',
-        color: '#5a3e2e', wordWrap: { width: cardW - 18 }, align: 'center',
+      const cost = this.add.text(0, 12, '', {
+        fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+        color: '#fff5d8',
       }).setOrigin(0.5);
-      card.add([sh, bg, icon, name, desc]);
-      card.setSize(cardW, cardH);
-      card.setInteractive({ useHandCursor: true });
-      card.on('pointerover', () => this.tweens.add({ targets: card, scale: 1.06, duration: 140 }));
-      card.on('pointerout',  () => this.tweens.add({ targets: card, scale: 1, duration: 140 }));
-      card.on('pointerdown', () => {
-        Audio.purchase();
-        perk.apply(this);
-        Juice.popText(this, width / 2, height / 2 - 80, perk.name,
-          { color: perk.color, size: 16, rise: 30, duration: 700 });
-        overlay.destroy();
-        this.waveBreather = WAVE_BREATHER;       // 정상 카운트다운 재개
+      c.add([bgG, iconT, lvLabel, cost]);
+      c.setSize(slotW, slotH);
+      c.setInteractive({ useHandCursor: true });
+      const draw = () => {
+        const lv = this.shopLevels[it.id];
+        const maxed = lv >= it.maxLevel;
+        const price = Math.round(it.baseCost * Math.pow(1.6, lv));
+        const can = !maxed && this.coinsEarned >= price;
+        bgG.clear();
+        bgG.fillStyle(0x000000, 0.55);
+        bgG.fillRoundedRect(-slotW / 2 + 2, -slotH / 2 + 2, slotW, slotH, 6);
+        bgG.fillStyle(maxed ? 0x6a5a3a : (can ? 0x4a2a14 : 0x2a1810), 1);
+        bgG.fillRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 6);
+        bgG.lineStyle(1.5, it.color, can || maxed ? 0.95 : 0.45);
+        bgG.strokeRoundedRect(-slotW / 2, -slotH / 2, slotW, slotH, 6);
+        iconT.setAlpha(can || maxed ? 1 : 0.5);
+        if (maxed) {
+          cost.setText('MAX');
+          cost.setColor('#f4c542');
+        } else {
+          cost.setText('⛁' + price);
+          cost.setColor(can ? '#fff5d8' : '#a89878');
+        }
+        // 레벨 핍 (작은 점 — 좌상단)
+        lvLabel.setText('●'.repeat(lv) + '○'.repeat(it.maxLevel - lv));
+        lvLabel.setColor(it.color === 0xc8302d ? '#ff8a8a' : '#f4c542');
+        lvLabel.setFontSize(7);
+      };
+      draw();
+      c.on('pointerdown', () => {
+        const lv = this.shopLevels[it.id];
+        if (lv >= it.maxLevel) return;
+        const price = Math.round(it.baseCost * Math.pow(1.6, lv));
+        if (this.coinsEarned < price) {
+          // 부족 — 흔들림
+          this.tweens.add({ targets: c, x: cx - 3, duration: 50, yoyo: true, repeat: 2,
+            onComplete: () => { c.x = cx; } });
+          Audio.miss?.();
+          return;
+        }
+        this.coinsEarned -= price;
+        this.shopLevels[it.id] = lv + 1;
+        it.apply();
+        Audio.purchase?.();
+        Juice.popText(this, cx, drawerY - 40, it.desc,
+          { color: it.color, size: 11, rise: 22, duration: 700 });
+        // 시각적 강조
+        this.tweens.add({ targets: c, scaleX: 1.15, scaleY: 1.15, duration: 100, yoyo: true });
+        this.shopButtons.forEach(b => b.draw());
+        this.updateHud();
       });
-      // 등장 애니메이션
-      card.setScale(0).setAlpha(0);
-      this.tweens.add({
-        targets: card, scale: 1, alpha: 1,
-        duration: 320, delay: 120 + i * 90, ease: 'Back.Out',
-      });
-      overlay.add(card);
+      this.shopButtons.push({ container: c, draw });
     });
+  }
+
+  refreshShop() {
+    if (this.shopButtons) this.shopButtons.forEach(b => b.draw());
   }
 
   spawnEnemy(kind) {
@@ -1014,8 +1054,11 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(101).setAlpha(0);
     this.hudCombo.setLetterSpacing?.(2);
 
-    // 로얄 볼리 HUD 버튼 — 우하단, 쿨다운 중엔 어두움
-    this.makeVolleyButton(width - 46, this.scale.height - 64);
+    // 로얄 볼리 HUD 버튼 — shop drawer 위쪽 (우측)
+    this.makeVolleyButton(width - 36, this.scale.height - 110);
+
+    // 인게임 업그레이드 shop 드로어 (하단 가운데)
+    this.buildUpgradeShop();
 
     this.updateHud();
   }
@@ -1126,6 +1169,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.hudCoins) return;
     this.hudCoins.setText(String(this.coinsEarned));
     this.hudHp.setText('♥ ' + this.king.hp);
+    this.refreshShop?.();
     if (this.hudCombo) {
       if (this.combo >= 3) {
         const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
