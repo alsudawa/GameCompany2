@@ -65,6 +65,7 @@ export class Orb extends Phaser.GameObjects.Container {
     this._pulse = 0;
     this._shimmerAngle = 0;
     this._trailTimer = 0;
+    this._anticipateFired = false; // TAP ZONE 진입 예고 펄스 1회 플래그
 
     // LINK 쌍 (동시 탭) 관련 필드. 리셋마다 초기화.
     this.linkPartner = null;
@@ -84,6 +85,7 @@ export class Orb extends Phaser.GameObjects.Container {
     this.spawnTime = this.scene.time.now;
     this.linkPartner = null;
     this.linkTappedAt = 0;
+    this._anticipateFired = false;
     this.setActive(true).setVisible(true).setScale(0.6).setAlpha(0).setRotation(0);
 
     const r = RADIUS[kind] ?? RADIUS.normal;
@@ -235,6 +237,19 @@ export class Orb extends Phaser.GameObjects.Container {
   update(dt) {
     if (!this.alive) return;
     this.y += this.vy * dt;
+
+    // TAP ZONE 100px 위에 진입하는 순간 halo를 1회 팽창시켜 타이밍 예고
+    if (!this._anticipateFired && this.scene.judgmentY) {
+      const dist = this.scene.judgmentY - this.y;
+      if (dist > 0 && dist < 100) {
+        this._anticipateFired = true;
+        this.scene.tweens.add({
+          targets: this.halo,
+          scaleX: { from: 1, to: 1.4 }, scaleY: { from: 1, to: 1.4 },
+          duration: 90, yoyo: true, ease: 'Sine.Out',
+        });
+      }
+    }
 
     this._pulse += dt * 6;
     const spinRate =

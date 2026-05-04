@@ -34,14 +34,14 @@ export const LEVELS = [
   { at:  0, label: 'LVL 1', speed: 340, spawn: 0.38, bomb: 0.06 },
   { at:  8, label: 'LVL 2', speed: 420, spawn: 0.32, bomb: 0.09 },
   { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
-  { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
+  { at: 24, label: 'LVL 4', speed: 550, spawn: 0.22, bomb: 0.14 }, // 전환 충격 완화
   { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
 ];
 
 export const COMBO = {
-  windowMs: 720,
-  bonusPerStep: 0.09,
-  maxMul: 6.0,
+  windowMs: 760,       // 720→760ms: LVL1 스폰 간격 기준 여유 확보
+  bonusPerStep: 0.15,  // 9%→15%: 콤보 5에서 1.75배, 10에서 2.5배로 즉각 체감
+  maxMul: 5.0,         // 6.0→5.0: 실제 도달 가능한 상한
 };
 
 export const SCORE = {
@@ -50,6 +50,12 @@ export const SCORE = {
 };
 
 export const GEMS_PER_RARE = 1;
+
+// LINK 동시 탭 판정 윈도우 (320→380ms: 모바일 양 엄지 지연 여유)
+export const LINK = { windowMs: 380 };
+
+// 스테이지별 별★ 획득 점수 기준 (0~3개)
+export const STAR_CUTS = [4000, 12000, 25000];
 
 // 콤보 등급 배너 (이 이상 도달 시 배너 표시)
 export const COMBO_RANKS = [

@@ -207,7 +207,9 @@ export class MenuScene extends Phaser.Scene {
     c.orb.strokeCircle(ox, oy, 28);
     // 텍스트
     const hex = '#' + mainColor.toString(16).padStart(6, '0');
-    c.label.setText(`STAGE ${stage.label}`).setColor('#6b708f');
+    const stageStars = Storage.getStars(`tap-rush-${stage.id}`);
+    const starStr = '★'.repeat(stageStars) + '☆'.repeat(3 - stageStars);
+    c.label.setText(`STAGE ${stage.label}  ${starStr}`).setColor('#6b708f');
     c.name.setText(stage.name).setColor(hex);
     c.tagline.setText(stage.tagline);
     // 하단 5개 도트 (현재 위치 인디케이터)

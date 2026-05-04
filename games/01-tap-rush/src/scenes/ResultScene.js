@@ -3,7 +3,8 @@
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { UI, FONT } from '../../../../shared/ui.js';
-import { GRADE_CUTS, COLORS } from '../config.js';
+import { Storage } from '../../../../shared/storage.js';
+import { GRADE_CUTS, COLORS, STAR_CUTS } from '../config.js';
 
 function gradeFor(score) {
   if (score >= GRADE_CUTS.S) return { grade: 'S', color: COLORS.gold,    label: 'PERFECT' };
@@ -32,6 +33,12 @@ export class ResultScene extends Phaser.Scene {
     const d = this.data_;
     const g = gradeFor(d.score);
 
+    // 스테이지 별★ 계산 및 저장
+    const stars = STAR_CUTS.filter(cut => d.score >= cut).length;
+    const stageKey = `tap-rush-${this.stageId}`;
+    const prevStars = Storage.getStars(stageKey);
+    const isNewStar = stars > prevStars && Storage.setStars(stageKey, stars);
+
     // 상단 섹션 헤더
     this.add.text(width / 2, 30, '— SESSION COMPLETE —', {
       fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
@@ -45,8 +52,24 @@ export class ResultScene extends Phaser.Scene {
     // 등급 배지 — 헥사곤 훈장
     this.drawHexMedal(width / 2, height * 0.28, 110, g);
 
+    // 별★ 3개 표시 (헥사곤 배지 아래)
+    const starY = height * 0.28 + 120;
+    for (let i = 0; i < 3; i++) {
+      const filled = i < stars;
+      const sx = width / 2 - 32 + i * 32;
+      const starTxt = this.add.text(sx, starY, filled ? '★' : '☆', {
+        fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
+        color: filled ? '#ffd24a' : '#3a3f5c',
+        stroke: '#000', strokeThickness: 3,
+      }).setOrigin(0.5).setDepth(15).setAlpha(0);
+      this.tweens.add({
+        targets: starTxt, alpha: 1, scale: { from: 0.4, to: 1 },
+        duration: 280, delay: 500 + i * 120, ease: 'Back.Out',
+      });
+    }
+
     // 등급 라벨
-    this.add.text(width / 2, height * 0.28 + 140, g.label, {
+    this.add.text(width / 2, height * 0.28 + 156, g.label, {
       fontFamily: FONT.mono, fontSize: '12px', fontStyle: '700',
       color: '#' + g.color.toString(16).padStart(6, '0'),
     }).setOrigin(0.5).setLetterSpacing(5);
@@ -100,6 +123,15 @@ export class ResultScene extends Phaser.Scene {
         Audio.tap();
       }
     });
+
+    // 새 별★ 획득 시 추가 파티클 연출
+    if (isNewStar) {
+      this.time.delayedCall(900, () => {
+        Juice.burst(this, width / 2, starY, { count: 20, color: COLORS.gold, speed: 240 });
+        Juice.ring(this, width / 2, starY, { color: COLORS.gold, radius: 120, count: 2 });
+        Audio.rankup?.();
+      });
+    }
   }
 
   drawHexMedal(cx, cy, radius, grade) {

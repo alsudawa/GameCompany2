@@ -16,7 +16,7 @@ import { UI, FONT } from '../../../../shared/ui.js';
 import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
-  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage, LINK,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -41,8 +41,9 @@ export class GameScene extends Phaser.Scene {
     // 장착 스킨 컬러는 유지하되, 스테이지 팔레트를 우선 쓰도록 오브에 전달한다.
     this.skin = SKIN_EFFECTS[profile.equippedSkin] || SKIN_EFFECTS.default;
 
-    // 맥동 네온 배경
-    this.bgPulse = this.add.graphics().setDepth(-10);
+    // 맥동 네온 배경 — Rectangle로 교체해 매 프레임 재드로우 제거
+    this.bgPulseRect = this.add.rectangle(0, 64, width, height - 64, COLORS.cyan, 0)
+      .setOrigin(0, 0).setDepth(-10);
     this.bgIntensity = 0;
 
     // 중앙 얕은 비네트 (바닥 네온)
@@ -65,6 +66,7 @@ export class GameScene extends Phaser.Scene {
     this.reachedMilestones = new Set();
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
+    this.comboProtectUntil = 0; // 레벨 전환 직후 콤보 보호 만료 시각
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
 
@@ -117,13 +119,23 @@ export class GameScene extends Phaser.Scene {
     this.timeBar = this.add.graphics().setDepth(201);
     this.drawTimeBar(1);
 
-    // 콤보 진행 바 (우측 세로바)
+    // 콤보 진행 바 (우측 세로바) + 수치 레이블
     this.comboBarBg = this.add.graphics().setDepth(200);
     this.comboBar = this.add.graphics().setDepth(201);
+    this.comboBarLabel = this.add.text(width - 28, height / 2 + 94, '', {
+      fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+      color: '#00e5ff',
+    }).setOrigin(0.5, 0).setDepth(202).setAlpha(0);
+    this._comboWarningActive = false;
     this.drawComboBar();
 
-    // 네온 콤보 테두리
+    // 네온 콤보 테두리 — create 시 한 번만 그리고 setAlpha로만 제어
     this.borderFx = this.add.graphics().setDepth(500);
+    this.borderFx.lineStyle(6, COLORS.magenta, 1);
+    this.borderFx.strokeRect(3, 3, width - 6, height - 6);
+    this.borderFx.lineStyle(16, COLORS.magenta, 0.25);
+    this.borderFx.strokeRect(10, 10, width - 20, height - 20);
+    this.borderFx.setAlpha(0);
     this.borderAlpha = 0;
 
     // TAP ZONE (판정 라인) — 배경 레이어 바로 위
@@ -366,16 +378,17 @@ export class GameScene extends Phaser.Scene {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
 
-    // 추가 보너스 점수
-    const bonus = 300;
+    // 보너스를 현재 콤보 배율에 비례해 동적 계산 (기존 300 고정→콤보에 따라 최대 900)
+    const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
+    const bonus = Math.round(400 + comboMul * 100);
     const prev = this.score;
     this.score += bonus;
     Juice.countUp(this, this.hudScore, prev, this.score, 220);
 
     // LINK 팝업 (중앙)
     this.showJudgmentFeedback('LINK', mx, my);
-    Juice.popText(this, mx, my + 30, `+${bonus}`, {
-      color: COLORS.magenta, size: 28,
+    Juice.popText(this, mx, my + 30, `LINK +${bonus}`, {
+      color: COLORS.magenta, size: 34, rise: 80, duration: 900,
     });
 
     // 중앙에서 양쪽으로 퍼지는 링 + 플래시
@@ -424,6 +437,16 @@ export class GameScene extends Phaser.Scene {
                     this.combo >= 10 ? COLORS.gold : COLORS.cyan;
       this.comboBar.fillStyle(color, 1);
       this.comboBar.fillRoundedRect(x, y + (barH - fillH), barW, fillH, 5);
+    }
+
+    // 콤보 수치 레이블 (바 아래)
+    if (this.comboBarLabel) {
+      if (this.combo >= 1) {
+        this.comboBarLabel.setText(String(this.combo)).setAlpha(1);
+      } else {
+        this.comboBarLabel.setAlpha(0);
+        this._comboWarningActive = false;
+      }
     }
   }
 
@@ -497,21 +520,38 @@ export class GameScene extends Phaser.Scene {
     // LINK 연결선 렌더 — 살아있는 쌍에 대해 한 번씩만
     this.drawLinkLines();
 
-    // 콤보 윈도우 만료
-    if (this.combo > 0 && time - this.lastTapAt > COMBO.windowMs) {
+    // 콤보 윈도우 만료 — 레벨 전환 직후 1.5초는 보호 윈도우 1.5배
+    const effectiveWindow = (time < this.comboProtectUntil)
+      ? COMBO.windowMs * 1.5
+      : COMBO.windowMs;
+    if (this.combo > 0 && time - this.lastTapAt > effectiveWindow) {
       this.resetCombo();
     }
 
-    // 네온 테두리 감쇠
-    if (this.borderAlpha > 0) {
-      this.borderAlpha = Math.max(0, this.borderAlpha - dt * 0.5);
-      this.drawBorder();
+    // 콤보 만료 임박 경고 (60% 경과, 콤보 5 이상)
+    if (this.combo >= 5 && this.lastTapAt > 0) {
+      const elapsed60 = time - this.lastTapAt > effectiveWindow * 0.6;
+      if (elapsed60 && !this._comboWarningActive) {
+        this._comboWarningActive = true;
+        this.tweens.add({
+          targets: this.comboBarLabel, alpha: { from: 0.4, to: 1 },
+          duration: 180, yoyo: true, repeat: 2, ease: 'Sine.InOut',
+        });
+      } else if (!elapsed60) {
+        this._comboWarningActive = false;
+      }
     }
 
-    // 배경 강도 감쇠 (콤보 없을 때)
+    // 네온 테두리 감쇠 — setAlpha만 (재드로우 없음)
+    if (this.borderAlpha > 0) {
+      this.borderAlpha = Math.max(0, this.borderAlpha - dt * 0.5);
+      this.borderFx.setAlpha(this.borderAlpha);
+    }
+
+    // 배경 강도 감쇠 — Rectangle setAlpha만 (재드로우 없음)
     if (this.combo === 0 && this.bgIntensity > 0) {
       this.bgIntensity = Math.max(0, this.bgIntensity - dt * 0.8);
-      this.drawBgPulse();
+      this.bgPulseRect.setAlpha(this.bgIntensity * 0.14);
     }
   }
 
@@ -522,6 +562,8 @@ export class GameScene extends Phaser.Scene {
         this.currentLevel = LEVELS[i];
         this.hudLevel.setText(this.currentLevel.label);
         this.showLevelBanner(this.currentLevel);
+        // 전환 직후 1.5초간 콤보 윈도우 1.5배 보호
+        this.comboProtectUntil = this.time.now + 1500;
         break;
       }
     }
@@ -661,9 +703,12 @@ export class GameScene extends Phaser.Scene {
     // (흔들면 오브 위치가 프레임마다 변해 "빨라진 듯한" 착시가 생긴다.)
     // 폭탄처럼 "실수/이벤트"에서만 흔들림을 쓴다. 콤보/레어는 링·테두리로만 보강.
 
-    // 배경 맥동 강도 UP
+    // 배경 맥동 강도 UP — Rectangle 색상+알파만 변경
     this.bgIntensity = Math.min(1, 0.15 + this.combo * 0.05);
-    this.drawBgPulse();
+    const bgColor = this.combo >= 25 ? COLORS.red :
+                    this.combo >= 15 ? COLORS.magenta :
+                    this.combo >= 10 ? COLORS.gold : this.skin.color;
+    this.bgPulseRect.setFillStyle(bgColor, this.bgIntensity * 0.14);
 
     if (kind === ORB_KIND.RARE) {
       Audio.rare();
@@ -678,8 +723,8 @@ export class GameScene extends Phaser.Scene {
       if (this.combo > 1) Audio.combo(this.combo);
     }
 
-    // 콤보 HUD 갱신 — 콤보배율만 표시 (타이밍배율은 팝업으로 전달)
-    if (this.combo >= 2) {
+    // 콤보 HUD 갱신 — 콤보 1부터 바로 배율 표시해 즉각 체감
+    if (this.combo >= 1) {
       this.hudCombo.setText(`COMBO ×${comboMul.toFixed(2)}  ${this.combo}`);
       Juice.punch(this, this.hudCombo, 1.3, 180);
     }
@@ -700,10 +745,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 네온 테두리
+    // 네온 테두리 — setAlpha만 (이미 create에서 그려짐)
     if (this.combo >= 10) {
       this.borderAlpha = 1;
-      this.drawBorder();
+      this.borderFx.setAlpha(1);
     }
 
     // 콤보 바 업데이트
@@ -711,7 +756,7 @@ export class GameScene extends Phaser.Scene {
 
     // LINK 동시 탭 판정 — 파트너가 최근에 탭됐다면 보너스.
     // 양방향 검증으로 재사용된 오브의 잔존 참조는 배제한다.
-    const LINK_WINDOW = 320;
+    const LINK_WINDOW = LINK.windowMs;
     if (obj.linkPartner && obj.linkPartner.linkPartner === obj) {
       const partner = obj.linkPartner;
       const partnerTap = partner.linkTappedAt;
@@ -794,41 +839,11 @@ export class GameScene extends Phaser.Scene {
     this.combo = 0;
     this.hudCombo.setText('');
     this.borderAlpha = 0;
-    this.drawBorder();
+    this.borderFx.setAlpha(0);
+    this._comboWarningActive = false;
     this.drawComboBar();
   }
 
-  drawBgPulse() {
-    const { width, height } = this.scale;
-    const g = this.bgPulse;
-    g.clear();
-    if (this.bgIntensity <= 0) return;
-    const alpha = this.bgIntensity * 0.35;
-    const color = this.combo >= 25 ? COLORS.red :
-                  this.combo >= 15 ? COLORS.magenta :
-                  this.combo >= 10 ? COLORS.gold : this.skin.color;
-    // 세로 그라데이션 느낌 (위/아래 네온 오버레이)
-    g.fillStyle(color, alpha * 0.4);
-    g.fillRect(0, 64, width, height - 64);
-    // 상하 진한 밴드
-    g.fillStyle(color, alpha * 0.6);
-    g.fillRect(0, 64, width, 90);
-    g.fillStyle(color, alpha * 0.6);
-    g.fillRect(0, height - 100, width, 100);
-  }
-
-  drawBorder() {
-    this.borderFx.clear();
-    if (this.borderAlpha <= 0) return;
-    const { width, height } = this.scale;
-    const alpha = Math.min(1, this.borderAlpha);
-    const color = this.combo >= 25 ? COLORS.red :
-                  this.combo >= 15 ? COLORS.magenta : COLORS.magenta;
-    this.borderFx.lineStyle(6, color, alpha);
-    this.borderFx.strokeRect(3, 3, width - 6, height - 6);
-    this.borderFx.lineStyle(16, color, alpha * 0.25);
-    this.borderFx.strokeRect(10, 10, width - 20, height - 20);
-  }
 
   endSession() {
     this.isPlaying = false;
