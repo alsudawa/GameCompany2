@@ -147,6 +147,25 @@ export class GameScene extends Phaser.Scene {
     // 8) 입력 — 탭한 위치로 이동 (릴리즈해도 유지)
     this.input.on('pointerdown', (p) => this.onPointer(p));
     this.input.on('pointermove', (p) => { if (p.isDown) this.onPointer(p); });
+    // P키 일시정지
+    this._paused = false;
+    this.input.keyboard?.on('keydown-P', () => {
+      if (this.isOver) return;
+      this._paused = !this._paused;
+      this.isPlaying = !this._paused;
+      if (this._paused) {
+        this._pauseText = this.add.text(this.scale.width / 2, this.scale.height / 2,
+          'PAUSED', {
+            fontFamily: FONT.display, fontSize: '48px', fontStyle: '900',
+            color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+            align: 'center',
+          }).setOrigin(0.5).setDepth(800);
+        this._pauseText.setLetterSpacing?.(6);
+      } else if (this._pauseText) {
+        this._pauseText.destroy();
+        this._pauseText = null;
+      }
+    });
     // pointerup 시에는 dragTarget을 유지 — 영웅이 도착할 때까지 이동.
     // (King.update가 도착 시 자동으로 dragTarget=null로 정리)
 
@@ -308,6 +327,11 @@ export class GameScene extends Phaser.Scene {
       if (s.tier >= 3) { s.update(dt, this); continue; }
       const inside = s.contains(this.king.x, this.king.y);
       s.setCharging(inside);
+      // 빌드된 타워: 영웅이 근처(SLOT_REACH)에 있으면 사거리 링 표시
+      if (s.built && s.tower) {
+        const nearTower = Math.hypot(this.king.x - s.x, this.king.y - s.y) < SLOT_REACH;
+        nearTower ? s.tower.showRange() : s.tower.hideRange();
+      }
       s.update(dt, this);
     }
 
@@ -768,13 +792,16 @@ export class GameScene extends Phaser.Scene {
     const ratio = Math.max(0, this.boss.hp / this.boss.maxHp);
     const w = this.scale.width - 60;
     this.bossHpFill.width = w * ratio;
-    // 50% 분기 — 미니언 4기 소환 + 화면 플래시
+    // 50% 분기 — 미니언 4기 소환 + 화면 플래시 + 8초 취약 구간
     if (!this.boss._mid && ratio <= 0.5) {
       this.boss._mid = true;
+      this.boss._enragedUntil = this.time.now + 8000; // 8초간 +50% 피해 취약
       Juice.flash(this, 0xc8302d, 200);
       Juice.shake(this, 0.014, 220);
       Juice.popText(this, this.boss.x, this.boss.y - 30, 'ENRAGED!',
         { color: 0xff5050, size: 16, rise: 28, duration: 700 });
+      Juice.popText(this, this.boss.x, this.boss.y - 55, 'VULNERABLE! ×1.5',
+        { color: 0xffd24a, size: 11, rise: 18, duration: 900 });
       // 미니언 — 즉시 4기 추가 스폰 (보스 위치는 path 따라 진행 중이므로 새 적은 path 시작점에서 등장)
       for (let i = 0; i < 4; i++) {
         this.time.delayedCall(i * 220, () => this.spawnEnemy('scout'));
@@ -868,15 +895,19 @@ export class GameScene extends Phaser.Scene {
             const ddx = e2.x - p.x;
             const ddy = e2.y - p.y;
             if (ddx * ddx + ddy * ddy < (p.splash + 18) * (p.splash + 18)) {
-              this.spawnDmgNumber(e2.x, e2.y - 18, p.dmg, p.kind);
-              const killed = e2.takeDamage(p.dmg, hdx, hdy);
+              const enragedMul2 = (e2 === this.boss && e2._enragedUntil && this.time.now < e2._enragedUntil) ? 1.5 : 1;
+              const dmg2 = Math.round(p.dmg * enragedMul2);
+              this.spawnDmgNumber(e2.x, e2.y - 18, dmg2, p.kind);
+              const killed = e2.takeDamage(dmg2, hdx, hdy);
               if (killed) this.onEnemyKilled(e2);
             }
           }
           this.spawnExplosion(p.x, p.y, p.splash);
         } else {
-          this.spawnDmgNumber(e.x, e.y - 18, p.dmg, p.kind);
-          const killed = e.takeDamage(p.dmg, hdx, hdy);
+          const enragedMul = (e === this.boss && e._enragedUntil && this.time.now < e._enragedUntil) ? 1.5 : 1;
+          const dmg = Math.round(p.dmg * enragedMul);
+          this.spawnDmgNumber(e.x, e.y - 18, dmg, p.kind);
+          const killed = e.takeDamage(dmg, hdx, hdy);
           if (p.slow > 0) e.applySlow(p.slow, 1500);
           if (killed) this.onEnemyKilled(e);
         }
@@ -905,26 +936,35 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  // 화살이 박힌 듯한 임팩트 — 확장하는 + 모양 대신, 짧은 플래시 + 살짝 튀는 부스러기
+  // 화살이 박힌 듯한 임팩트 — 확장 링 + 플래시 + 부스러기
   spawnHitFlash(x, y, kind = 'archer') {
     const color = kind === 'frost' ? 0xa0e0ff
                 : kind === 'mortar' || kind === 'cannon' ? 0xffaa55
                 : 0xfff4a0;
-    const flash = this.add.circle(x, y, 8, color, 0.85).setDepth(920);
+    // 확장 링 (임팩트 느낌 강화)
+    const ring = this.add.circle(x, y, 6, color, 0).setDepth(921);
+    ring.setStrokeStyle(2, color, 1);
     this.tweens.add({
-      targets: flash, alpha: 0, scale: { from: 1.4, to: 0.6 },
-      duration: 130, ease: 'Cubic.Out',
+      targets: ring, scale: { from: 1, to: 2.4 }, alpha: { from: 1, to: 0 },
+      duration: 200, ease: 'Cubic.Out',
+      onComplete: () => ring.destroy(),
+    });
+    // 중심 플래시 (더 크게)
+    const flash = this.add.circle(x, y, 12, color, 0.9).setDepth(920);
+    this.tweens.add({
+      targets: flash, alpha: 0, scale: { from: 1.2, to: 0.4 },
+      duration: 150, ease: 'Cubic.Out',
       onComplete: () => flash.destroy(),
     });
-    // 작은 부스러기 3개 — 임팩트 지점에서 약간만 튐 (이전엔 +shape이 1.6배로 부풀어 튕겨나가 보였음)
-    for (let i = 0; i < 3; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const d = 6 + Math.random() * 6;
-      const sp = this.add.circle(x, y, 1.2, color, 1).setDepth(919);
+    // 부스러기 6개 — 더 넓게 튐
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.random() * 0.5;
+      const d = 8 + Math.random() * 10;
+      const sp = this.add.circle(x, y, 1.8, color, 1).setDepth(919);
       this.tweens.add({
         targets: sp,
         x: x + Math.cos(a) * d, y: y + Math.sin(a) * d,
-        alpha: 0, duration: 180, ease: 'Cubic.Out',
+        alpha: 0, duration: 220, ease: 'Cubic.Out',
         onComplete: () => sp.destroy(),
       });
     }
@@ -954,7 +994,7 @@ export class GameScene extends Phaser.Scene {
     const now = this.time.now;
     if (now > this.comboUntil) this.combo = 0;
     this.combo++;
-    this.comboUntil = now + 2500;
+    this.comboUntil = now + 3000;
     if (this.combo > this.comboBest) this.comboBest = this.combo;
     const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
     this.score += e.scoreVal * mult;
@@ -1152,8 +1192,8 @@ export class GameScene extends Phaser.Scene {
     const baseAng = target
       ? Math.atan2(target.y - this.king.y, target.x - this.king.x)
       : -Math.PI / 2;
-    // 5발 부채 — ±25° 펼침, 데미지 1.4배
-    const fan = 5, spread = (50 * Math.PI / 180);
+    // 5발 부채 — ±35° 펼침, 데미지 1.4배
+    const fan = 5, spread = (70 * Math.PI / 180);
     const dmg = Math.round(this.king.weapon.damage * 1.4);
     for (let i = 0; i < fan; i++) {
       const t = (i / (fan - 1)) - 0.5;
@@ -1200,7 +1240,7 @@ export class GameScene extends Phaser.Scene {
     this.hudHp.setText('♥ ' + this.king.hp);
     this.refreshShop?.();
     if (this.hudCombo) {
-      if (this.combo >= 3) {
+      if (this.combo >= 2) {
         const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
         this.hudCombo.setText(`${this.combo} COMBO  ×${mult}`);
         if (this.hudCombo.alpha < 1) this.tweens.add({ targets: this.hudCombo, alpha: 1, duration: 120 });

@@ -101,7 +101,7 @@ export const TOWERS = {
     desc: '적을 둔화', color: 0x6abedf,
     cost:    [80, 130, 200],
     range:   [120, 140, 165],
-    damage:  [5, 10, 18],
+    damage:  [7, 13, 22],
     fireRate:[0.32, 0.27, 0.22],
     bulletSpeed: 520,
     splash: 0, slow: 0.42,

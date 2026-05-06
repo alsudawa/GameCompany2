@@ -126,6 +126,9 @@ export class GameScene extends Phaser.Scene {
     this.borderFx = this.add.graphics().setDepth(500);
     this.borderAlpha = 0;
 
+    // 마지막 10초 위험 비네트 오버레이
+    this._dangerOverlay = this.add.graphics().setDepth(498).setAlpha(0);
+
     // TAP ZONE (판정 라인) — 배경 레이어 바로 위
     this.judgmentY = Math.round(height * JUDGMENT.lineYRatio);
     this.drawJudgmentZone();
@@ -310,8 +313,8 @@ export class GameScene extends Phaser.Scene {
     if (tier === 'PERFECT') Audio.perfect?.();
     else if (tier === 'GREAT') Audio.great?.();
     else if (tier === 'GOOD') Audio.good?.();
-    else if (tier === 'EARLY') Audio.early?.();
-    else if (tier === 'LATE') Audio.late?.();
+    else if (tier === 'EARLY') { Audio.early?.(); Juice.shake(this, 0.005, 100); }
+    else if (tier === 'LATE') { Audio.late?.(); Juice.shake(this, 0.005, 100); }
     else if (tier === 'MISS') Audio.miss?.();
 
     const { width } = this.scale;
@@ -480,6 +483,22 @@ export class GameScene extends Phaser.Scene {
         this.hudTime.setColor('#e8ecf5');
       }
 
+      // 마지막 10초 위험 비네트 (맥동하는 붉은 테두리)
+      if (this.remaining <= 10 && this.remaining > 0) {
+        const pulse = 0.04 + 0.05 * Math.sin(time * 0.008);
+        const { width, height } = this.scale;
+        this._dangerOverlay.clear();
+        this._dangerOverlay.fillStyle(0xff1133, 1);
+        const bw = 40;
+        this._dangerOverlay.fillRect(0, 0, width, bw);
+        this._dangerOverlay.fillRect(0, height - bw, width, bw);
+        this._dangerOverlay.fillRect(0, 0, bw, height);
+        this._dangerOverlay.fillRect(width - bw, 0, bw, height);
+        this._dangerOverlay.setAlpha(pulse);
+      } else {
+        this._dangerOverlay.setAlpha(0);
+      }
+
       // 레벨 진행 체크
       this.checkLevelProgression();
 
@@ -625,6 +644,12 @@ export class GameScene extends Phaser.Scene {
     // 타이밍 판정 (TAP ZONE 기준)
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
+
+    // 모바일 햅틱 피드백
+    if (window.navigator?.vibrate) {
+      const vibMs = judge.tier === 'PERFECT' ? 30 : judge.tier === 'GREAT' ? 20 : 14;
+      navigator.vibrate(vibMs);
+    }
 
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
