@@ -296,17 +296,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   showJudgmentFeedback(tier /*, x, y */) {
-    // 판정 텍스트는 오브가 아니라 TAP ZONE 라인 바로 아래 고정 위치에 띄운다.
-    // 오브 위에 튀어오르면 시야가 가려져 다음 오브가 "순간이동"한 듯 보이는 착시가 난다.
+    // 판정 텍스트는 TAP ZONE 라인 바로 아래 고정 위치에 띄운다.
     const color = JUDGMENT_COLORS[tier] ?? 0x8a8aa8;
     const hex = '#' + color.toString(16).padStart(6, '0');
     const sizeMap = {
-      PERFECT: 30, GREAT: 26, GOOD: 22,
-      EARLY: 16, LATE: 16, MISS: 20, LINK: 28,
+      PERFECT: 36, GREAT: 28, GOOD: 22,
+      EARLY: 16, LATE: 16, MISS: 20, LINK: 30,
     };
     const size = sizeMap[tier] ?? 20;
 
-    // 판정별 SFX (짧은 톤, Audio.tap()/rare()와 중첩되어 타격+화성 느낌)
+    // 판정별 SFX
     if (tier === 'PERFECT') Audio.perfect?.();
     else if (tier === 'GREAT') Audio.great?.();
     else if (tier === 'GOOD') Audio.good?.();
@@ -327,12 +326,29 @@ export class GameScene extends Phaser.Scene {
       duration: 120, ease: 'Back.Out',
       onComplete: () => {
         this.tweens.add({
-          targets: t, alpha: 0, y: t.y + 12,
-          duration: 320, delay: 140, ease: 'Cubic.Out',
+          targets: t, alpha: 0, y: t.y + 14,
+          duration: 340, delay: 160, ease: 'Cubic.Out',
           onComplete: () => t.destroy(),
         });
       },
     });
+
+    // PERFECT 전용: TAP ZONE 라인 골드 플래시 + 추가 파티클
+    if (tier === 'PERFECT') {
+      const lineFlash = this.add.graphics().setDepth(945);
+      lineFlash.lineStyle(3, COLORS.gold, 1);
+      lineFlash.strokeLineShape(new Phaser.Geom.Line(0, this.judgmentY, width, this.judgmentY));
+      this.tweens.add({
+        targets: lineFlash, alpha: 0,
+        duration: 380, ease: 'Cubic.Out',
+        onComplete: () => lineFlash.destroy(),
+      });
+      // 중앙 골드 스파크
+      Juice.spark(this, x, this.judgmentY, COLORS.gold, 32);
+      // 좌우 미니 스파크
+      Juice.spark(this, x - 90, this.judgmentY, COLORS.gold, 18);
+      Juice.spark(this, x + 90, this.judgmentY, COLORS.gold, 18);
+    }
   }
 
   drawLinkLines() {
@@ -366,8 +382,9 @@ export class GameScene extends Phaser.Scene {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
 
-    // 추가 보너스 점수
-    const bonus = 300;
+    // 추가 보너스 점수 (콤보 배율 반영)
+    const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
+    const bonus = Math.round(600 * comboMul);
     const prev = this.score;
     this.score += bonus;
     Juice.countUp(this, this.hudScore, prev, this.score, 220);
@@ -375,25 +392,23 @@ export class GameScene extends Phaser.Scene {
     // LINK 팝업 (중앙)
     this.showJudgmentFeedback('LINK', mx, my);
     Juice.popText(this, mx, my + 30, `+${bonus}`, {
-      color: COLORS.magenta, size: 28,
+      color: COLORS.magenta, size: 32,
     });
 
     // 중앙에서 양쪽으로 퍼지는 링 + 플래시
-    Juice.flash(this, COLORS.magenta, 180);
-    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 240, count: 2, duration: 500 });
-    Juice.burst(this, a.x, a.y, { count: 14, color: COLORS.magenta, speed: 300 });
-    Juice.burst(this, b.x, b.y, { count: 14, color: COLORS.magenta, speed: 300 });
+    Juice.flash(this, COLORS.magenta, 220);
+    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 300, count: 3, duration: 560 });
+    Juice.burst(this, a.x, a.y, { count: 18, color: COLORS.magenta, speed: 340 });
+    Juice.burst(this, b.x, b.y, { count: 18, color: COLORS.magenta, speed: 340 });
 
-    // 보너스 젬 (가끔)
-    if (Math.random() < 0.4) {
-      this.gemsEarned += 1;
-      Juice.popText(this, mx, my - 30, '💎 +1', {
-        color: COLORS.gold, size: 24, rise: 60, duration: 900,
-      });
-    }
+    // 보너스 젬 (LINK 성공 시 무조건 지급)
+    this.gemsEarned += 1;
+    Juice.popText(this, mx, my - 36, '💎 +1', {
+      color: COLORS.gold, size: 26, rise: 70, duration: 1000,
+    });
 
     Audio.linkBonus?.();
-    Juice.shake(this, 0.012, 180);
+    Juice.shake(this, 0.014, 200);
   }
 
   onOrbMiss(orb) {
@@ -627,7 +642,10 @@ export class GameScene extends Phaser.Scene {
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
 
     const now = this.time.now;
-    const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
+    // 콤보가 높을수록 윈도우 축소 (5콤보마다 20ms, 최소 520ms)
+    const stageWindow = this.stage.comboWindow ?? COMBO.windowMs;
+    const effectiveWindow = Math.max(520, stageWindow - Math.floor(this.combo / 5) * 20);
+    const inWindow = (now - this.lastTapAt) < effectiveWindow;
     this.combo = inWindow ? this.combo + 1 : 1;
     this.lastTapAt = now;
     this.tapsMade++;

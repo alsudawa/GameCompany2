@@ -16,6 +16,7 @@ import { Projectile } from '../entities/Projectile.js';
 import { Building } from '../entities/Building.js';
 import { TowerSlot } from '../entities/TowerSlot.js';
 import { Coin } from '../entities/Coin.js';
+import { rollPerks } from '../meta/perks.js';
 
 const ENEMY_POOL = 100;
 const PROJECTILE_POOL = 160;
@@ -578,8 +579,8 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = WAVE_BREATHER;
-      // 보너스 보석 (드롭 형태로 영웅 근처에)
+      // waveBreather = 0 → 자동 진행 없음. 퍽 선택 완료 후 직접 시작.
+      this.waveBreather = 0;
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
                        this.king.y + (Math.random() - 0.5) * 60, 5);
@@ -587,7 +588,133 @@ export class GameScene extends Phaser.Scene {
       Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
         '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
+      this.time.delayedCall(650, () => this.showPerkSelection());
     }
+  }
+
+  showPerkSelection() {
+    if (this.isOver) return;
+    const { width, height } = this.scale;
+    const uiGroup = [];
+
+    // 반투명 오버레이 (게임 입력 차단)
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.72)
+      .setDepth(500).setInteractive();
+    uiGroup.push(overlay);
+
+    // 제목 패널
+    const titleBg = this.add.graphics().setDepth(501);
+    const tw = 280, th = 40;
+    titleBg.fillStyle(COLORS.woodDark, 1);
+    titleBg.fillRoundedRect(width / 2 - tw / 2, 150, tw, th, 8);
+    titleBg.fillStyle(COLORS.parchment, 0.96);
+    titleBg.fillRoundedRect(width / 2 - tw / 2 + 2, 152, tw - 4, th - 4, 6);
+    uiGroup.push(titleBg);
+
+    const titleT = this.add.text(width / 2, 170, 'CHOOSE YOUR PATH', {
+      fontFamily: FONT.display, fontSize: '15px', fontStyle: '900',
+      color: '#3e2e1e',
+    }).setOrigin(0.5).setDepth(502);
+    titleT.setLetterSpacing?.(2);
+    uiGroup.push(titleT);
+
+    const waveLabel = this.level.waves[this.waveIdx]?.label ?? `WAVE ${this.waveIdx + 1}`;
+    const subT = this.add.text(width / 2, 197, `${waveLabel} CLEARED`, {
+      fontFamily: FONT.mono, fontSize: '10px', color: '#9ad0a0',
+    }).setOrigin(0.5).setDepth(502);
+    subT.setLetterSpacing?.(2);
+    uiGroup.push(subT);
+
+    // 카드 3개
+    const cardW = 118, cardH = 162, gap = 8;
+    const totalW = 3 * cardW + 2 * gap;
+    const startCX = (width - totalW) / 2 + cardW / 2;
+    const cardY = 440;
+
+    const perks = rollPerks(3);
+
+    const dismiss = (chosenPerk) => {
+      uiGroup.forEach(o => { if (o.disableInteractive) o.disableInteractive(); });
+      chosenPerk.apply(this);
+      Juice.flash(this, chosenPerk.color, 140);
+      Juice.shake(this, 0.007, 140);
+      Juice.popText(this, width / 2, height / 2, chosenPerk.name,
+        { color: chosenPerk.color, size: 17, rise: 50, duration: 800 });
+      Audio.fanfare?.();
+      this.tweens.add({
+        targets: uiGroup, alpha: 0, duration: 260, ease: 'Cubic.In',
+        onComplete: () => {
+          uiGroup.forEach(o => { try { o.destroy(); } catch (_) {} });
+          this.waveBreather = 1.0;
+        },
+      });
+    };
+
+    const drawCardBg = (bgGfx, perk, hover) => {
+      bgGfx.clear();
+      bgGfx.fillStyle(0x000000, 0.42);
+      bgGfx.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW, cardH, 8);
+      bgGfx.fillStyle(hover ? 0xfffae8 : COLORS.parchment, 0.96);
+      bgGfx.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 8);
+      bgGfx.lineStyle(2, COLORS.woodDark, 1);
+      bgGfx.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 8);
+      bgGfx.lineStyle(3, perk.color, hover ? 1.0 : 0.85);
+      bgGfx.strokeRoundedRect(-cardW / 2 + 4, -cardH / 2 + 4, cardW - 8, cardH - 8, 6);
+    };
+
+    perks.forEach((perk, idx) => {
+      const cx = startCX + idx * (cardW + gap);
+      const c = this.add.container(cx, cardY + 45).setDepth(502).setAlpha(0);
+      uiGroup.push(c);
+
+      const bg = this.add.graphics();
+      drawCardBg(bg, perk, false);
+
+      const perkHex = '#' + perk.color.toString(16).padStart(6, '0');
+      const iconT = this.add.text(0, -52, perk.icon, {
+        fontFamily: FONT.display, fontSize: '30px', fontStyle: '900',
+        color: perkHex, stroke: '#3e2e1e', strokeThickness: 2,
+      }).setOrigin(0.5);
+
+      const nameT = this.add.text(0, -16, perk.name, {
+        fontFamily: FONT.display, fontSize: '9px', fontStyle: '700',
+        color: '#3e2e1e', wordWrap: { width: cardW - 12 }, align: 'center',
+      }).setOrigin(0.5, 0.5);
+
+      const divG = this.add.graphics();
+      divG.lineStyle(1, COLORS.woodDark, 0.35);
+      divG.lineBetween(-cardW / 2 + 14, 10, cardW / 2 - 14, 10);
+
+      const descT = this.add.text(0, 46, perk.desc, {
+        fontFamily: FONT.mono, fontSize: '8px',
+        color: '#5a3e2e', wordWrap: { width: cardW - 14 }, align: 'center',
+      }).setOrigin(0.5, 0.5);
+
+      c.add([bg, iconT, nameT, divG, descT]);
+      c.setSize(cardW, cardH);
+      c.setInteractive({ useHandCursor: true });
+
+      c.on('pointerover', () => {
+        drawCardBg(bg, perk, true);
+        this.tweens.killTweensOf(c);
+        this.tweens.add({ targets: c, y: cardY - 7, duration: 100, ease: 'Cubic.Out' });
+      });
+      c.on('pointerout', () => {
+        drawCardBg(bg, perk, false);
+        this.tweens.killTweensOf(c);
+        this.tweens.add({ targets: c, y: cardY, duration: 100, ease: 'Cubic.In' });
+      });
+      c.on('pointerdown', () => {
+        c.disableInteractive();
+        dismiss(perk);
+      });
+
+      // 등장 애니메이션
+      this.tweens.add({
+        targets: c, alpha: 1, y: cardY,
+        duration: 320, delay: 60 + idx * 90, ease: 'Back.Out',
+      });
+    });
   }
 
   // 인게임 업그레이드 — 코인 소비, 타워와 같은 통화
@@ -768,17 +895,38 @@ export class GameScene extends Phaser.Scene {
     const ratio = Math.max(0, this.boss.hp / this.boss.maxHp);
     const w = this.scale.width - 60;
     this.bossHpFill.width = w * ratio;
-    // 50% 분기 — 미니언 4기 소환 + 화면 플래시
+    // HP바 색상: 50% 이하 주황, 25% 이하 빨강
+    this.bossHpFill.fillColor = ratio <= 0.25 ? 0xff2020
+                              : ratio <= 0.50 ? 0xff8a3a
+                              : 0xc8302d;
+
+    // 페이즈 2 (50%) — 미니언 4기 소환 + 속도 가속
     if (!this.boss._mid && ratio <= 0.5) {
       this.boss._mid = true;
-      Juice.flash(this, 0xc8302d, 200);
-      Juice.shake(this, 0.014, 220);
+      Juice.flash(this, 0xc8302d, 240);
+      Juice.shake(this, 0.016, 260);
       Juice.popText(this, this.boss.x, this.boss.y - 30, 'ENRAGED!',
-        { color: 0xff5050, size: 16, rise: 28, duration: 700 });
-      // 미니언 — 즉시 4기 추가 스폰 (보스 위치는 path 따라 진행 중이므로 새 적은 path 시작점에서 등장)
+        { color: 0xff5050, size: 18, rise: 32, duration: 750 });
+      this.boss.speed = Math.round(this.boss.baseSpeed * 1.35);
       for (let i = 0; i < 4; i++) {
         this.time.delayedCall(i * 220, () => this.spawnEnemy('scout'));
       }
+    }
+
+    // 페이즈 3 (25%) — 미니언 6기 + 격노 가속 + 화면 전체 붉은 광채
+    if (!this.boss._frenzy && ratio <= 0.25) {
+      this.boss._frenzy = true;
+      Juice.flash(this, 0xff0000, 400);
+      Juice.shake(this, 0.024, 380);
+      Juice.ring(this, this.boss.x, this.boss.y, { color: 0xff2020, radius: 180, count: 3, duration: 600 });
+      Juice.popText(this, this.scale.width / 2, this.scale.height / 2, 'FRENZY!!',
+        { color: 0xff2020, size: 26, rise: 60, duration: 900 });
+      this.boss.speed = Math.round(this.boss.baseSpeed * 1.80);
+      for (let i = 0; i < 6; i++) {
+        this.time.delayedCall(i * 160,
+          () => this.spawnEnemy(i % 2 === 0 ? 'scout' : 'soldier'));
+      }
+      Audio.bomb?.();
     }
   }
 
@@ -983,16 +1131,21 @@ export class GameScene extends Phaser.Scene {
     if (Math.random() < gemChance) {
       this.spawnCoin(e.x, e.y - 4, 5);
     }
-    // Gilded 적 — 사망시 추가 코인 폭발 + 하트 회복
+    // Gilded 적 — 사망시 코인 폭발 + 하트 회복 + 강화된 연출
     if (e._gilded) {
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2;
-        this.spawnCoin(e.x + Math.cos(a) * 18, e.y + Math.sin(a) * 18, 1);
+      for (let i = 0; i < 20; i++) {
+        const a = (i / 20) * Math.PI * 2;
+        const r = 16 + Math.random() * 22;
+        this.spawnCoin(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r, 1);
       }
-      Juice.popText(this, e.x, e.y - 40, '+ HEART',
-        { color: 0xff5050, size: 14, rise: 26, duration: 700 });
+      Juice.burst(this, e.x, e.y, { count: 22, color: 0xffd24a, speed: 280, duration: 620 });
+      Juice.ring(this, e.x, e.y, { color: 0xffd24a, radius: 90, count: 2, duration: 400 });
+      Juice.popText(this, e.x, e.y - 50, 'GOLDEN BOUNTY!',
+        { color: 0xffd24a, size: 17, rise: 44, duration: 800 });
+      Juice.popText(this, e.x, e.y - 24, '♥ +1',
+        { color: 0xff5050, size: 14, rise: 28, duration: 700 });
       this.king.hp = Math.min(this.king.maxHp, this.king.hp + 1);
-      Juice.flash(this, 0xffd24a, 180);
+      Juice.flash(this, 0xffd24a, 240);
       this.updateHud();
     }
     this.updateHud();

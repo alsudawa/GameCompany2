@@ -127,6 +127,7 @@ export const STAGES = [
     speedMul: 0.92,
     spawnMul: 1.08,
     linkChance: 0.10,
+    comboWindow: 720,   // 초보자 친화 — 가장 관대한 윈도우
   },
   {
     id: 'pulse',
@@ -141,6 +142,7 @@ export const STAGES = [
     speedMul: 1.0,
     spawnMul: 1.0,
     linkChance: 0.18,
+    comboWindow: 700,   // 중간 난이도
   },
   {
     id: 'drive',
@@ -155,6 +157,7 @@ export const STAGES = [
     speedMul: 1.06,
     spawnMul: 0.95,
     linkChance: 0.38,
+    comboWindow: 680,   // LINK 쌍이 많아 이미 어려움
   },
   {
     id: 'storm',
@@ -169,6 +172,7 @@ export const STAGES = [
     speedMul: 1.08,
     spawnMul: 0.92,
     linkChance: 0.14,
+    comboWindow: 720,   // 폭탄 회피에 집중 — 콤보는 관대하게
   },
   {
     id: 'star',
@@ -183,6 +187,7 @@ export const STAGES = [
     speedMul: 1.02,
     spawnMul: 0.98,
     linkChance: 0.22,
+    comboWindow: 660,   // 최고 난이도 — 가장 타이트한 윈도우
   },
 ];
 
