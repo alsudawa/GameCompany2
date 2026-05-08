@@ -57,6 +57,7 @@ export class GameScene extends Phaser.Scene {
     this.gemsEarned = 0;
     this.tapsMade = 0;
     this.lastTapAt = 0;
+    this.lastMilestoneAt = 0;  // 마일스톤 디바운스 타임스탬프
     this.remaining = GAME.sessionSeconds;
     this.elapsed = 0;
     this.spawnTimer = 0;
@@ -502,6 +503,31 @@ export class GameScene extends Phaser.Scene {
       this.resetCombo();
     }
 
+    // 빈 탭 피드백 — 콤보 0인 상태로 1초 이상 지나면 TAP ZONE 라인을 맥동시켜 플레이어를 깨운다
+    if (this.isPlaying && this.combo === 0 && (time - this.lastTapAt) > 1000) {
+      this._idlePulseT = (this._idlePulseT ?? 0) + delta;
+      // 2초마다 한 번씩 빠른 펄스 2회 발사
+      if (this._idlePulseT > 2000) {
+        this._idlePulseT = 0;
+        for (let i = 0; i < 2; i++) {
+          this.time.delayedCall(i * 180, () => {
+            if (!this.isPlaying || this.combo > 0) return;
+            const ring = this.add.graphics().setDepth(-4).setAlpha(0.6);
+            const { width } = this.scale;
+            ring.lineStyle(2, 0x00e5ff, 1);
+            ring.strokeLineShape(new Phaser.Geom.Line(0, this.judgmentY, width, this.judgmentY));
+            this.tweens.add({
+              targets: ring, alpha: 0,
+              duration: 380, ease: 'Cubic.Out',
+              onComplete: () => ring.destroy(),
+            });
+          });
+        }
+      }
+    } else {
+      this._idlePulseT = 0;
+    }
+
     // 네온 테두리 감쇠
     if (this.borderAlpha > 0) {
       this.borderAlpha = Math.max(0, this.borderAlpha - dt * 0.5);
@@ -561,7 +587,8 @@ export class GameScene extends Phaser.Scene {
 
     // 스테이지 배수 적용: 속도/스폰 간격/폭탄·레어 확률 전부 스테이지 성격에 맞춤.
     const speed = this.currentLevel.speed * this.stage.speedMul;
-    const bombProb = this.currentLevel.bomb * this.stage.bombMul;
+    // 폭탄 확률은 최대 16% 캡 — 스테이지 배수가 지나치게 높아도 플레이 불가 방지
+    const bombProb = Math.min(this.currentLevel.bomb * this.stage.bombMul, 0.16);
     const rareProb = PROB.rare * this.stage.rareMul;
 
     const roll = Math.random();
@@ -692,10 +719,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 마일스톤 체크
+    // 마일스톤 체크 — 600ms 디바운스로 동시 팡파르 폭발 방지
     for (const m of SCORE_MILESTONES) {
-      if (this.score >= m && !this.reachedMilestones.has(m)) {
+      if (this.score >= m && !this.reachedMilestones.has(m) &&
+          (this.time.now - this.lastMilestoneAt) > 600) {
         this.reachedMilestones.add(m);
+        this.lastMilestoneAt = this.time.now;
         this.showMilestone(m);
       }
     }

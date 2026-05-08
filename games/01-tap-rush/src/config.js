@@ -60,8 +60,8 @@ export const COMBO_RANKS = [
   { at: 40, label: 'GOD LIKE!', color: 0xffffff },
 ];
 
-// 세션 중 점수 마일스톤 (달성 시 팡파르)
-export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
+// 세션 중 점수 마일스톤 (달성 시 팡파르) — 간격을 넓혀 중복 폭발 방지
+export const SCORE_MILESTONES = [500, 2000, 5000, 10000, 18000];
 
 export const GRADE_CUTS = {
   S: 25000,   // 밸런스 재조정 (세션 짧아짐 반영)
@@ -73,10 +73,10 @@ export const GRADE_CUTS = {
 // 오브 중심이 라인에 가까울수록 높은 등급.
 // 'good' 바깥을 탭하면 아예 무효(EARLY/LATE) — 오브는 계속 낙하.
 export const JUDGMENT = {
-  lineYRatio: 0.72,
+  lineYRatio: 0.82,  // 0.72→0.82: 엄지 자연 위치(화면 80%)로 내림
   perfect: 22,   // 이 범위 안 → PERFECT
   great:   50,   // PERFECT 바깥, 이 범위 안 → GREAT
-  good:    110,  // 이 범위 안 → GOOD, 바깥은 탭 무효
+  good:    90,   // 이 범위 안 → GOOD, 바깥은 탭 무효 (110→90: 더 정밀)
   perfectMul: 1.7,
   greatMul:   1.3,
   goodMul:    1.0,

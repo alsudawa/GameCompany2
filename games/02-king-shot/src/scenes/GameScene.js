@@ -3,6 +3,7 @@
 // 적 처치 시 코인 드롭+자석 수집, 자동 웨이브 진행 + 베이스 진화.
 
 import { COLORS, FONT, GAME, KEY, TILE, TOWERS, GRADE_CUTS } from '../config.js';
+import { rollPerks } from '../meta/perks.js';
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { Storage } from '../../../../shared/storage.js';
@@ -153,8 +154,9 @@ export class GameScene extends Phaser.Scene {
     // 9) HUD
     this.drawHud();
 
-    // 10) 첫 슬롯만 unlock (순차 잠금 해제)
+    // 10) 처음 두 슬롯 unlock — 타워 전략을 더 빠르게 경험하도록
     if (this.slots.length > 0) this.slots[0].unlock();
+    if (this.slots.length > 1) this.slots[1].unlock();
 
     Audio.playBgm('stage_dawn', { fadeIn: 0.6, volume: 0.55 });
     this.runCountdown();
@@ -342,7 +344,8 @@ export class GameScene extends Phaser.Scene {
         !this.enemies.some(e => e.alive)) {
       this.endWave();
     }
-    if (!this.waveActive && this.waveBreather > 0) {
+    // 퍽 선택 화면이 열린 동안은 breather 타이머를 멈춘다
+    if (!this.waveActive && this.waveBreather > 0 && !this._perkChooserOpen) {
       this.waveBreather -= dt;
       if (this.waveBreather <= 0) this.startNextWave();
     }
@@ -578,7 +581,6 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = WAVE_BREATHER;
       // 보너스 보석 (드롭 형태로 영웅 근처에)
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
@@ -587,7 +589,136 @@ export class GameScene extends Phaser.Scene {
       Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
         '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
+      // 퍽 선택 (웨이브 클리어 포상) — 고른 후 breather 시작
+      this.time.delayedCall(600, () => this.showPerkChoice());
     }
+  }
+
+  showPerkChoice() {
+    const { width, height } = this.scale;
+    this._perkChooserOpen = true;
+
+    // 어두운 반투명 배경
+    const overlay = this.add.graphics().setDepth(800);
+    overlay.fillStyle(0x000000, 0.72);
+    overlay.fillRect(0, 0, width, height);
+
+    const perks = rollPerks(3);
+    const cardW = 120, cardH = 160, gap = 16;
+    const totalW = perks.length * cardW + (perks.length - 1) * gap;
+    const startX = (width - totalW) / 2;
+    const centerY = height / 2 + 20;
+
+    // 제목
+    const title = this.add.text(width / 2, centerY - 112, 'WAVE CLEAR!', {
+      fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(801).setAlpha(0);
+    const sub = this.add.text(width / 2, centerY - 84, 'CHOOSE A ROYAL BOON', {
+      fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+      color: '#f4e8c8',
+    }).setOrigin(0.5).setDepth(801).setAlpha(0);
+    this.tweens.add({ targets: [title, sub], alpha: 1, duration: 240 });
+
+    const cardObjs = [];
+
+    perks.forEach((perk, i) => {
+      const cx = startX + i * (cardW + gap) + cardW / 2;
+      const cy = centerY;
+
+      // 카드 그래픽
+      const bg = this.add.graphics().setDepth(801);
+      bg.fillStyle(0x000000, 0.55);
+      bg.fillRoundedRect(cx - cardW / 2 + 2, cy - cardH / 2 + 2, cardW, cardH, 8);
+      bg.fillStyle(COLORS.parchment, 0.96);
+      bg.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+      bg.lineStyle(2, perk.color, 0.9);
+      bg.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+
+      const iconT = this.add.text(cx, cy - 44, perk.icon, {
+        fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
+        color: Phaser.Display.Color.IntegerToColor(perk.color).rgba,
+        stroke: '#3e2e1e', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(802);
+
+      const nameT = this.add.text(cx, cy - 4, perk.name, {
+        fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+        color: '#3e2e1e',
+        wordWrap: { width: cardW - 12 },
+        align: 'center',
+      }).setOrigin(0.5).setDepth(802);
+
+      const descT = this.add.text(cx, cy + 32, perk.desc, {
+        fontFamily: FONT.mono, fontSize: '9px',
+        color: '#5a3e2e',
+        wordWrap: { width: cardW - 16 },
+        align: 'center',
+      }).setOrigin(0.5).setDepth(802);
+
+      // 터치/클릭 영역
+      const zone = this.add.zone(cx, cy, cardW, cardH)
+        .setInteractive({ useHandCursor: true }).setDepth(803);
+
+      zone.on('pointerover', () => {
+        bg.clear();
+        bg.fillStyle(0x000000, 0.55);
+        bg.fillRoundedRect(cx - cardW / 2 + 2, cy - cardH / 2 + 2, cardW, cardH, 8);
+        bg.fillStyle(0xfffde8, 1);
+        bg.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+        bg.lineStyle(3, perk.color, 1);
+        bg.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+        this.tweens.add({ targets: [bg, iconT, nameT, descT], scaleX: 1.04, scaleY: 1.04, duration: 80 });
+      });
+      zone.on('pointerout', () => {
+        bg.clear();
+        bg.fillStyle(0x000000, 0.55);
+        bg.fillRoundedRect(cx - cardW / 2 + 2, cy - cardH / 2 + 2, cardW, cardH, 8);
+        bg.fillStyle(COLORS.parchment, 0.96);
+        bg.fillRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+        bg.lineStyle(2, perk.color, 0.9);
+        bg.strokeRoundedRect(cx - cardW / 2, cy - cardH / 2, cardW, cardH, 8);
+        this.tweens.add({ targets: [bg, iconT, nameT, descT], scaleX: 1, scaleY: 1, duration: 80 });
+      });
+      zone.on('pointerdown', () => this.onPerkChosen(perk, allObjs));
+
+      cardObjs.push(bg, iconT, nameT, descT, zone);
+    });
+
+    const allObjs = [overlay, title, sub, ...cardObjs];
+    // 카드 입장 애니
+    allObjs.forEach(o => { if (o.setAlpha) o.setAlpha(0); });
+    this.time.delayedCall(60, () => {
+      this.tweens.add({
+        targets: allObjs.filter(o => o.setAlpha), alpha: 1,
+        duration: 260, ease: 'Back.Out',
+      });
+    });
+  }
+
+  onPerkChosen(perk, objs) {
+    if (!this._perkChooserOpen) return;
+    this._perkChooserOpen = false;
+
+    // 선택 이펙트
+    Audio.purchase?.();
+    Juice.flash(this, perk.color, 180);
+    const { width, height } = this.scale;
+    Juice.popText(this, width / 2, height / 2, `${perk.icon} ${perk.name}`,
+      { color: perk.color, size: 22, rise: 40, duration: 900 });
+
+    // 퍽 적용
+    perk.apply(this);
+
+    // 오버레이 제거
+    this.tweens.add({
+      targets: objs.filter(o => o && o.setAlpha),
+      alpha: 0, duration: 200,
+      onComplete: () => objs.forEach(o => { try { o?.destroy?.(); } catch(_) {} }),
+    });
+
+    // breather 후 다음 웨이브
+    this.waveBreather = WAVE_BREATHER;
+    this.updateHud();
   }
 
   // 인게임 업그레이드 — 코인 소비, 타워와 같은 통화
