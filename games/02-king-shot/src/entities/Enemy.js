@@ -145,9 +145,31 @@ export class Enemy extends Phaser.GameObjects.Container {
     }
     if (this.hp <= 0) {
       this.alive = false;
+
+      // 사망 파티클 — 8방향으로 작은 조각 폭발
+      const deathX = this.x, deathY = this.y;
+      const deathColor = this.kind === 'boss' ? 0xff4040 :
+                         this.kind === 'elite' ? 0xd4a030 : 0xffd24a;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const sp = this.scene.add.circle(deathX, deathY, 2, deathColor, 1).setDepth(this.depth + 1);
+        this.scene.tweens.add({
+          targets: sp,
+          x: deathX + Math.cos(a) * (30 + Math.random() * 20),
+          y: deathY + Math.sin(a) * (30 + Math.random() * 20),
+          alpha: 0, scale: 0.2,
+          duration: 280 + Math.random() * 120, ease: 'Cubic.Out',
+          onComplete: () => sp.destroy(),
+        });
+      }
+
+      // 몸체 사망 애니 — 더 역동적으로
       this.scene.tweens.add({
-        targets: this, alpha: 0, scale: 0.7, y: this.y - 6,
-        duration: 230, ease: 'Cubic.Out',
+        targets: this,
+        alpha: 0, scale: 0.3,
+        y: this.y + 14,
+        rotation: (Math.random() - 0.5) * 0.6,
+        duration: 260, ease: 'Cubic.In',
         onComplete: () => this.setVisible(false).setActive(false),
       });
       return true;

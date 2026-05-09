@@ -5,7 +5,7 @@
 export const GAME = {
   width: 480,
   height: 800,
-  sessionSeconds: 40,       // 60→40: 쉴 틈 없이 짧고 굵게
+  sessionSeconds: 50,       // 40→50: 끝까지 긴장감 유지 (LVL6-7 추가)
   countdown: 3,
   spawnMarginTop: 0.15,
 };
@@ -36,6 +36,8 @@ export const LEVELS = [
   { at: 16, label: 'LVL 3', speed: 500, spawn: 0.26, bomb: 0.12 },
   { at: 24, label: 'LVL 4', speed: 580, spawn: 0.20, bomb: 0.15 },
   { at: 32, label: 'LVL 5', speed: 640, spawn: 0.15, bomb: 0.18 },
+  { at: 40, label: 'LVL 6', speed: 700, spawn: 0.12, bomb: 0.21 },
+  { at: 46, label: 'LVL 7', speed: 760, spawn: 0.09, bomb: 0.24 },
 ];
 
 export const COMBO = {
@@ -64,9 +66,9 @@ export const COMBO_RANKS = [
 export const SCORE_MILESTONES = [500, 1500, 3500, 7000, 12000, 20000];
 
 export const GRADE_CUTS = {
-  S: 25000,   // 밸런스 재조정 (세션 짧아짐 반영)
-  A: 12000,
-  B: 4000,
+  S: 30000,   // 50초 세션 반영 (LVL6-7 추가 점수 고려)
+  A: 15000,
+  B: 5000,
 };
 
 // 타이밍 판정 — 화면 중하단에 "TAP ZONE" 라인.

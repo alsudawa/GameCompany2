@@ -399,10 +399,19 @@ export class GameScene extends Phaser.Scene {
   onOrbMiss(orb) {
     if (!this.isPlaying) return;
     const { width, height } = this.scale;
-    // 콤보 끊김 (탭은 없었지만 놓쳤다 — 가벼운 벌)
     if (this.combo > 0) this.resetCombo();
-    // 하단 경계 근처에서 MISS 표시
     this.showJudgmentFeedback('MISS', Phaser.Math.Clamp(orb.x, 60, width - 60), height - 80);
+
+    // 하단 에지 레드 플래시 — 놓쳤다는 명확한 부정 신호
+    Juice.flash(this, COLORS.red, 130);
+    const edgeFlash = this.add.graphics().setDepth(900).setAlpha(0);
+    edgeFlash.fillStyle(COLORS.red, 0.35);
+    edgeFlash.fillRect(0, height - 110, width, 110);
+    this.tweens.add({
+      targets: edgeFlash, alpha: { from: 0.35, to: 0 },
+      duration: 220, ease: 'Cubic.Out',
+      onComplete: () => edgeFlash.destroy(),
+    });
   }
 
   drawComboBar() {
@@ -803,14 +812,19 @@ export class GameScene extends Phaser.Scene {
     const g = this.bgPulse;
     g.clear();
     if (this.bgIntensity <= 0) return;
-    const alpha = this.bgIntensity * 0.35;
+
+    // 콤보가 높을수록 점멸 주기 단축: 느긋(6ms) → 긴박(14ms)
+    const pulseSpeed = this.combo >= 25 ? 0.014 :
+                       this.combo >= 15 ? 0.011 :
+                       this.combo >= 10 ? 0.009 : 0.006;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time.now * pulseSpeed);
+    const alpha = this.bgIntensity * 0.35 * (0.7 + 0.3 * pulse);
+
     const color = this.combo >= 25 ? COLORS.red :
                   this.combo >= 15 ? COLORS.magenta :
                   this.combo >= 10 ? COLORS.gold : this.skin.color;
-    // 세로 그라데이션 느낌 (위/아래 네온 오버레이)
     g.fillStyle(color, alpha * 0.4);
     g.fillRect(0, 64, width, height - 64);
-    // 상하 진한 밴드
     g.fillStyle(color, alpha * 0.6);
     g.fillRect(0, 64, width, 90);
     g.fillStyle(color, alpha * 0.6);

@@ -575,16 +575,39 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = false;
     Audio.fanfare();
     Juice.flash(this, COLORS.goldHud, 200);
+    Juice.shake(this, 0.008, 180);
+
+    // WAVE CLEAR 배너
+    const { width, height } = this.scale;
+    const waveNum = this.waveIdx + 1;
+    const banner = this.add.text(width / 2, height / 2 - 50,
+      `WAVE ${waveNum} CLEAR!`, {
+      fontFamily: FONT.display, fontSize: '46px', fontStyle: '900',
+      color: '#ffd24a', stroke: '#3e2e1e', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(820).setAlpha(0).setScale(0.5);
+    banner.setLetterSpacing?.(4);
+    this.tweens.add({
+      targets: banner, scale: 1.1, alpha: 1,
+      duration: 300, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({
+          targets: banner, alpha: 0, y: banner.y - 30,
+          delay: 900, duration: 300, ease: 'Cubic.In',
+          onComplete: () => banner.destroy(),
+        });
+      },
+    });
+    Juice.ring(this, width / 2, height / 2 - 50, { color: COLORS.goldHud, radius: 200, count: 2, duration: 500 });
+
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
       this.waveBreather = WAVE_BREATHER;
-      // 보너스 보석 (드롭 형태로 영웅 근처에)
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
                        this.king.y + (Math.random() - 0.5) * 60, 5);
       }
-      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+      Juice.popText(this, width / 2, height / 2 + 10,
         '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
     }
@@ -1298,13 +1321,24 @@ export class GameScene extends Phaser.Scene {
     if (slot.tower && !this.towers.includes(slot.tower)) {
       this.towers.push(slot.tower);
     }
-    Juice.popText(this, slot.x, slot.y - 30, 'TOWER!',
-      { color: 0xf4c542, size: 16, rise: 30, duration: 600 });
+
+    // 타워 종류에 맞는 색상
+    const towerColor = TOWERS[slot.kind]?.color ?? 0xf4c542;
+
+    // 빌드 팝업 텍스트 (타워 이름)
+    const towerName = TOWERS[slot.kind]?.name ?? 'TOWER';
+    Juice.popText(this, slot.x, slot.y - 44, `${towerName} BUILT!`,
+      { color: towerColor, size: 18, rise: 44, duration: 800 });
+
+    // 링 확산 + 플래시
+    Juice.ring(this, slot.x, slot.y, { color: towerColor, radius: 120, count: 2, duration: 400 });
+    Juice.flash(this, towerColor, 160);
+    Audio.purchase?.();
+
     const idx = this.slots.indexOf(slot);
     if (idx >= 0 && idx + 1 < this.slots.length) {
       const next = this.slots[idx + 1];
       this.scene.scene && next.unlock();
-      // 작은 안내 화살표
       Juice.ring(this, next.x, next.y, { color: 0xf4c542, radius: 60, duration: 480 });
     }
   }
