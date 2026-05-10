@@ -68,6 +68,16 @@ export class GameScene extends Phaser.Scene {
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
 
+    // FEVER TIME
+    this._feverActive = false;
+    this._feverUntil = 0;
+    this._feverTriggered = false;
+    this._feverBorderFx = null;
+    this._feverBorderTween = null;
+
+    // STAR auto-collect
+    this._autoCollectUntil = 0;
+
     // 풀
     this.orbs = [];
     for (let i = 0; i < POOL_SIZE; i++) this.orbs.push(new Orb(this));
@@ -490,6 +500,24 @@ export class GameScene extends Phaser.Scene {
       }
 
       if (this.remaining <= 0) this.endSession();
+
+      // FEVER TIME expiry check
+      if (this._feverActive && this.time.now >= this._feverUntil) {
+        this._feverActive = false;
+        if (this._feverBorderFx) this._feverBorderFx.clear();
+        Juice.popText(this, this.scale.width / 2, this.scale.height / 2, 'FEVER ENDED', { color: 0xff8c00, size: 16, duration: 600 });
+      }
+
+      // STAR auto-collect
+      if (this._autoCollectUntil && this.time.now < this._autoCollectUntil) {
+        for (const o of this.orbs) {
+          if (!o.alive || o.kind === ORB_KIND.BOMB) continue;
+          const dy = Math.abs(o.y - this.judgmentY);
+          if (dy <= JUDGMENT.good * 1.5) {
+            this.onOrbTap(o);
+          }
+        }
+      }
     }
 
     for (const o of this.orbs) o.update(dt);
@@ -566,9 +594,16 @@ export class GameScene extends Phaser.Scene {
 
     const roll = Math.random();
     let kind;
-    if (roll < rareProb) kind = ORB_KIND.RARE;
-    else if (roll < rareProb + bombProb) kind = ORB_KIND.BOMB;
-    else kind = ORB_KIND.NORMAL;
+    const starProb = PROB.rare * 0.5;
+    if (roll < starProb && this.levelIdx >= 2) {
+      kind = ORB_KIND.STAR;
+    } else if (roll < starProb + rareProb) {
+      kind = ORB_KIND.RARE;
+    } else if (roll < starProb + rareProb + bombProb) {
+      kind = ORB_KIND.BOMB;
+    } else {
+      kind = ORB_KIND.NORMAL;
+    }
 
     // LINK 쌍: LVL2 이후 일반 오브에서 스테이지별 확률로 대체. 항상 좌/우 분리
     // → 양엄지를 각각 한 손씩 쓰도록 유도한다.
@@ -622,6 +657,19 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === ORB_KIND.STAR) {
+      this._autoCollectUntil = this.time.now + 3000;
+      Juice.flash(this, 0xffd700, 200);
+      Juice.burst(this, obj.x, obj.y, { count: 20, color: 0xffd700, speed: 300 });
+      Juice.ring(this, obj.x, obj.y, { color: 0xffd700, radius: 120, count: 2 });
+      Juice.popText(this, obj.x, obj.y - 40, '⭐ AUTO COLLECT!', { color: 0xffd700, size: 24, rise: 60, duration: 1000 });
+      Audio.rare?.();
+      this.score += 500;
+      Juice.countUp(this, this.hudScore, this.score - 500, this.score, 300);
+      obj.pop();
+      return;
+    }
+
     // 타이밍 판정 (TAP ZONE 기준)
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
@@ -636,7 +684,8 @@ export class GameScene extends Phaser.Scene {
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
     const mul = comboMul * judge.mul;
-    const gained = Math.round(base * mul);
+    const feverMul = (this._feverActive && this.time.now < this._feverUntil) ? 2.0 : 1.0;
+    const gained = Math.round(base * mul * feverMul);
     const prevScore = this.score;
     this.score += gained;
 
@@ -690,6 +739,12 @@ export class GameScene extends Phaser.Scene {
         this.reachedRanks.add(rank.at);
         this.showRankBanner(rank);
       }
+    }
+
+    // FEVER TIME trigger at combo 20 (once per session)
+    if (this.combo >= 20 && !this._feverTriggered) {
+      this._feverTriggered = true;
+      this.startFeverTime();
     }
 
     // 마일스톤 체크
@@ -763,6 +818,41 @@ export class GameScene extends Phaser.Scene {
         Juice.burst(this, width * 0.8, height * 0.45, { count: 14, color: rank.color, speed: 340 });
       });
     }
+  }
+
+  startFeverTime() {
+    this._feverActive = true;
+    this._feverUntil = this.time.now + 8000;  // 8 seconds
+    // Show banner
+    const { width, height } = this.scale;
+    const banner = this.add.text(width / 2, height * 0.35, '🔥 FEVER TIME! 🔥', {
+      fontFamily: FONT.display, fontSize: '48px', fontStyle: '900',
+      color: '#ff8c00', stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(985).setScale(0.3).setAlpha(0).setLetterSpacing(4);
+    this.tweens.add({
+      targets: banner, scale: 1.1, alpha: 1, duration: 280, ease: 'Back.Out',
+      onComplete: () => {
+        this.tweens.add({ targets: banner, alpha: 0, y: banner.y - 30,
+          duration: 500, delay: 1200, onComplete: () => banner.destroy() });
+      },
+    });
+    // Flash orange
+    Juice.flash(this, 0xff8c00, 250);
+    Juice.shake(this, 0.015, 300);
+    Audio.fanfare?.();
+    // Pulsing orange border effect for duration
+    this._feverBorderTween = this.tweens.add({
+      targets: { alpha: 0 }, alpha: 1, duration: 400, yoyo: true, repeat: 19,
+      onUpdate: (tween) => {
+        if (this._feverBorderFx) {
+          this._feverBorderFx.clear();
+          this._feverBorderFx.lineStyle(8, 0xff8c00, 0.6);
+          this._feverBorderFx.strokeRect(4, 4, this.scale.width - 8, this.scale.height - 8);
+        }
+      },
+      onComplete: () => { if (this._feverBorderFx) this._feverBorderFx.clear(); this._feverActive = false; },
+    });
+    this._feverBorderFx = this.add.graphics().setDepth(499);
   }
 
   showMilestone(score) {

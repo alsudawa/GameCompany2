@@ -11,12 +11,14 @@ export const ORB_KIND = {
   NORMAL: 'normal',
   RARE: 'rare',
   BOMB: 'bomb',
+  STAR: 'star',
 };
 
 const RADIUS = {
   normal: 30,
   rare: 38,
   bomb: 34,
+  star: 22,
 };
 
 const MAX_HIT = 62;
@@ -90,6 +92,7 @@ export class Orb extends Phaser.GameObjects.Container {
     // 스테이지 팔레트 우선. 씬에 stage가 없으면 (예: 프리뷰) 기본색으로 폴백.
     const palette = this.scene.stage?.palette;
     const color =
+      kind === ORB_KIND.STAR ? 0xffd700 :
       kind === ORB_KIND.RARE ? (palette?.rare ?? COLORS.gold) :
       kind === ORB_KIND.BOMB ? (palette?.bomb ?? COLORS.red) :
       (palette?.normal ?? COLORS.cyan);
@@ -98,7 +101,10 @@ export class Orb extends Phaser.GameObjects.Container {
 
     this.drawAll(0);
 
-    if (kind === ORB_KIND.RARE) {
+    if (kind === ORB_KIND.STAR) {
+      this.icon.setText('⭐').setColor('#ffffff').setFontSize(20);
+      this.avoidLabel.setVisible(false);
+    } else if (kind === ORB_KIND.RARE) {
       this.icon.setText('✦').setColor('#3a1a00').setFontSize(26);
       this.avoidLabel.setVisible(false);
     } else if (kind === ORB_KIND.BOMB) {
@@ -117,6 +123,18 @@ export class Orb extends Phaser.GameObjects.Container {
       duration: 140,
       ease: 'Back.Out',
     });
+
+    // STAR: continuous pulsing scale tween to draw attention
+    if (kind === ORB_KIND.STAR) {
+      this.scene.tweens.add({
+        targets: this,
+        scale: { from: 1.0, to: 1.2 },
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.InOut',
+      });
+    }
   }
 
   containsWorld(x, y) {
@@ -239,7 +257,8 @@ export class Orb extends Phaser.GameObjects.Container {
     this._pulse += dt * 6;
     const spinRate =
       this.kind === ORB_KIND.RARE ? 1.8 :
-      this.kind === ORB_KIND.BOMB ? 2.2 : 0.7;
+      this.kind === ORB_KIND.BOMB ? 2.2 :
+      this.kind === ORB_KIND.STAR ? 2.5 : 0.7;
     this._shimmerAngle += dt * spinRate;
     const amp = Math.sin(this._pulse) * 2;
     this.drawAll(amp);
@@ -249,6 +268,24 @@ export class Orb extends Phaser.GameObjects.Container {
     } else if (this.kind === ORB_KIND.BOMB) {
       // 불안정한 떨림
       this.rotation = Math.sin(this._pulse * 2.5) * 0.18;
+    } else if (this.kind === ORB_KIND.STAR) {
+      this.rotation += dt * 2.0;
+    }
+
+    if (this.kind === ORB_KIND.STAR) {
+      this._trailTimer -= dt;
+      if (this._trailTimer <= 0) {
+        this._trailTimer = 0.06;
+        const dot = this.scene.add.circle(this.x, this.y, 5, 0xffd700, 0.6).setDepth(this.depth - 1);
+        this.scene.tweens.add({
+          targets: dot,
+          alpha: 0,
+          scale: 0.2,
+          duration: 300,
+          ease: 'Cubic.Out',
+          onComplete: () => dot.destroy(),
+        });
+      }
     }
 
     if (this.kind === ORB_KIND.RARE) {

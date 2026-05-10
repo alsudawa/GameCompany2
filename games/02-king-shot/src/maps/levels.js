@@ -215,7 +215,62 @@ const LEVEL_THRONE = {
   ],
 };
 
-export const LEVELS = [LEVEL_GATE, LEVEL_FOREST, LEVEL_PASS, LEVEL_CRYPT, LEVEL_THRONE];
+const LEVEL_THE_CRYPT = {
+  id: 'the_crypt', label: '06', name: 'THE CRYPT',
+  tagline: '어둠의 지하 묘지',
+  cols: 15, rows: 25,
+  hpMul: 1.55, groundTint: 0x2a1a3a,
+  // S-curved path: enters top-centre, snakes left→right→left→right down to bottom
+  pathWaypoints: [
+    [7, -1], [7,  2],
+    [2,  2], [2,  7],
+    [12, 7], [12, 12],
+    [2, 12], [2, 17],
+    [12, 17], [12, 21],
+  ],
+  throne: { col: 12, row: 21 },
+  towerSlots: [
+    // Upper band
+    [4, 3], [10, 3],
+    [4, 5], [10, 5],
+    // Middle bands
+    [4, 8], [8,  8],
+    [4, 10], [8, 10],
+    [4, 13], [8, 13],
+    [4, 15], [8, 15],
+    // Lower band
+    [4, 18], [8, 18],
+    [4, 20], [8, 20],
+  ],
+  decorations: [
+    // Crypt walls — dense rocks and no trees
+    [0, 0, 'ROCK_LARGE'], [1, 0, 'ROCK_SMALL'], [13, 0, 'ROCK_LARGE'], [14, 1, 'ROCK_SMALL'],
+    [0, 1, 'ROCK_SMALL'], [14, 2, 'ROCK_LARGE'], [0, 3, 'ROCK_LARGE'], [14, 3, 'ROCK_SMALL'],
+    [0, 5, 'ROCK_SMALL'], [14, 5, 'ROCK_LARGE'], [0, 6, 'ROCK_LARGE'], [14, 6, 'ROCK_SMALL'],
+    [0, 8, 'ROCK_SMALL'], [14, 8, 'ROCK_LARGE'], [0, 9, 'ROCK_LARGE'], [14, 9, 'ROCK_SMALL'],
+    [0, 11, 'ROCK_SMALL'], [14, 11, 'ROCK_LARGE'],
+    [0, 13, 'ROCK_LARGE'], [14, 13, 'ROCK_SMALL'],
+    [0, 15, 'ROCK_SMALL'], [14, 15, 'ROCK_LARGE'],
+    [0, 17, 'ROCK_LARGE'], [14, 17, 'ROCK_SMALL'],
+    [0, 19, 'ROCK_SMALL'], [14, 19, 'ROCK_LARGE'],
+    [0, 21, 'ROCK_LARGE'], [14, 21, 'ROCK_SMALL'],
+    [1, 22, 'ROCK_SMALL'], [13, 22, 'ROCK_LARGE'],
+    // Path interior accents
+    [7, 4, 'ROCK_SMALL'], [7, 9, 'ROCK_SMALL'],
+    [7, 14, 'ROCK_SMALL'], [7, 19, 'ROCK_SMALL'],
+    [3, 14, 'ROCK_SMALL'], [11, 9, 'ROCK_SMALL'],
+  ],
+  waves: [
+    { label: 'WAVE 1/6', units: [['soldier', 22, 0.22, 0], ['heavy', 4, 0.55, 6]] },
+    { label: 'WAVE 2/6', units: [['heavy', 10, 0.5, 0], ['scout', 16, 0.16, 4]] },
+    { label: 'WAVE 3/6', units: [['soldier', 20, 0.18, 0], ['heavy', 12, 0.48, 4], ['elite', 2, 0.9, 12]] },
+    { label: 'WAVE 4 — BOSS', units: [['heavy', 8, 0.42, 0], ['scout', 18, 0.14, 3], ['boss', 1, 0, 12]] },
+    { label: 'WAVE 5/6', units: [['elite', 6, 0.85, 0], ['heavy', 16, 0.44, 5], ['scout', 20, 0.14, 8]] },
+    { label: 'WAVE 6 — FINAL', units: [['soldier', 28, 0.14, 0], ['heavy', 20, 0.40, 5], ['elite', 8, 0.75, 10], ['boss', 2, 4, 18]] },
+  ],
+};
+
+export const LEVELS = [LEVEL_GATE, LEVEL_FOREST, LEVEL_PASS, LEVEL_CRYPT, LEVEL_THRONE, LEVEL_THE_CRYPT];
 
 export function getLevel(id) {
   return LEVELS.find(l => l.id === id) ?? LEVEL_GATE;

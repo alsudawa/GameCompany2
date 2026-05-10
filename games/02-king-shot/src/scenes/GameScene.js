@@ -143,6 +143,8 @@ export class GameScene extends Phaser.Scene {
     this.combo = 0;
     this.comboUntil = 0;
     this.comboBest = 0;
+    // 킬 마일스톤
+    this._killMilestones = new Set();
 
     // 8) 입력 — 탭한 위치로 이동 (릴리즈해도 유지)
     this.input.on('pointerdown', (p) => this.onPointer(p));
@@ -233,6 +235,11 @@ export class GameScene extends Phaser.Scene {
     {
       const c = this.clampKingArea(this.king.x, this.king.y);
       this.king.x = c.x; this.king.y = c.y;
+    }
+    // Last Stand 오라 위치 추적
+    if (this._lastStandAura) {
+      this._lastStandAura.x = this.king.x;
+      this._lastStandAura.y = this.king.y;
     }
 
     // 웨이브 스폰
@@ -587,6 +594,8 @@ export class GameScene extends Phaser.Scene {
       Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
         '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
+      // 웨이브 카운트다운 표시 (3, 2, 1, NEXT WAVE!)
+      this._showWaveCountdown();
     }
   }
 
@@ -959,6 +968,37 @@ export class GameScene extends Phaser.Scene {
     const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
     this.score += e.scoreVal * mult;
     this.kills++;
+    // 킬 마일스톤 체크
+    for (const ms of [10, 25, 50, 100]) {
+      if (this.kills >= ms && !this._killMilestones.has(ms)) {
+        this._killMilestones.add(ms);
+        // 축하 배너
+        const banner = this.add.text(this.scale.width / 2, this.scale.height / 2 - 30,
+          `${ms} KILLS! BONUS!`, {
+          fontFamily: FONT.display, fontSize: '36px', fontStyle: '900',
+          color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+        }).setOrigin(0.5).setDepth(700);
+        this.tweens.add({
+          targets: banner, scale: { from: 1.4, to: 1 }, alpha: { from: 0, to: 1 },
+          duration: 320, ease: 'Back.Out',
+        });
+        this.tweens.add({
+          targets: banner, alpha: 0, y: banner.y - 25,
+          delay: 1200, duration: 400,
+          onComplete: () => banner.destroy(),
+        });
+        // 보너스 코인 8개 스폰
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          this.spawnCoin(
+            this.king.x + Math.cos(a) * 28,
+            this.king.y + Math.sin(a) * 28,
+            1
+          );
+        }
+        Juice.flash(this, COLORS.goldHud, 200);
+      }
+    }
     if (e === this.boss) this.boss = null;
 
     // 콤보 milestone popText
@@ -998,11 +1038,85 @@ export class GameScene extends Phaser.Scene {
     this.updateHud();
   }
 
+  _showWaveCountdown() {
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2 + 40;
+    let n = Math.ceil(WAVE_BREATHER);
+    const countText = this.add.text(cx, cy, String(n), {
+      fontFamily: FONT.display, fontSize: '60px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(500);
+
+    const tick = () => {
+      if (!countText.active) return;
+      countText.setText(n > 0 ? String(n) : 'NEXT WAVE!');
+      countText.setScale(1.2);
+      countText.setAlpha(1);
+      this.tweens.add({
+        targets: countText,
+        scale: 1,
+        alpha: 0,
+        duration: 700,
+        ease: 'Cubic.Out',
+        onComplete: () => {
+          if (n <= 0) {
+            countText.destroy();
+            return;
+          }
+          n--;
+          tick();
+        },
+      });
+    };
+    tick();
+  }
+
   onEnemyReachedThrone(e, dmg) {
     const destroyed = this.building.takeDamage(dmg);
     Juice.flash(this, COLORS.capeRed, 160);
     Juice.shake(this, 0.012, 160);
     Audio.miss();
+    // LAST STAND — 왕좌 HP 1 남았을 때 격노 모드
+    if (this.building.hp === 1 && !this._lastStandActive) {
+      this._lastStandActive = true;
+      // 화면 붉은 플래시
+      Juice.flash(this, COLORS.capeRed, 400);
+      // "LAST STAND!" 배너
+      const banner = this.add.text(this.scale.width / 2, this.scale.height / 2, 'LAST STAND!', {
+        fontFamily: FONT.display, fontSize: '52px', fontStyle: '900',
+        color: '#c8302d', stroke: '#3e2e1e', strokeThickness: 4,
+      }).setOrigin(0.5).setDepth(700);
+      this.tweens.add({
+        targets: banner, scale: { from: 1.4, to: 1 }, alpha: { from: 0, to: 1 },
+        duration: 320, ease: 'Back.Out',
+      });
+      this.tweens.add({
+        targets: banner, alpha: 0, y: banner.y - 30,
+        delay: 1200, duration: 400,
+        onComplete: () => banner.destroy(),
+      });
+      // 피해 1.5배 부스트 (8초)
+      this.king.weapon.damage = Math.round(this.king.weapon.damage * 1.5);
+      // 붉은 오라 효과
+      const aura = this.add.circle(0, 0, 28, 0xc8302d, 0.35).setDepth(79);
+      this._lastStandAura = aura;
+      this.tweens.add({
+        targets: aura,
+        alpha: { from: 0.2, to: 0.55 },
+        scale: { from: 0.85, to: 1.15 },
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+      });
+      // 8초 후 오라 제거
+      this.time.delayedCall(8000, () => {
+        if (this._lastStandAura) {
+          this.tweens.killTweensOf(this._lastStandAura);
+          this._lastStandAura.destroy();
+          this._lastStandAura = null;
+        }
+      });
+    }
     if (destroyed) this.gameOver();
   }
 

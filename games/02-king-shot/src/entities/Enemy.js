@@ -11,6 +11,22 @@ const TINT_FOR = {
   boss:    0xff8080,
 };
 
+// Type badge labels and colours for visual differentiation
+const TYPE_LABEL = {
+  soldier: 'SOL',
+  scout:   'SCOUT',
+  heavy:   'HEAVY',
+  elite:   'ELITE',
+  boss:    '',
+};
+const TYPE_BADGE_COLOR = {
+  soldier: '#aaddff',
+  scout:   '#00e5ff',
+  heavy:   '#ff4444',
+  elite:   '#cc44ff',
+  boss:    '#ffffff',
+};
+
 export class Enemy extends Phaser.GameObjects.Container {
   constructor(scene) {
     super(scene, 0, 0);
@@ -21,7 +37,12 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.hpBg   = scene.add.rectangle(0, -22, 30, 4, 0x000000, 0.7);
     this.hpFill = scene.add.rectangle(0, -22, 30, 4, 0xff5050, 1);
     this.hpFill.setOrigin(0, 0.5);
-    this.add([this.shadow, this.body, this.hpBg, this.hpFill]);
+    // Type badge — created once, repositioned on reset/update
+    this._typeLabel = scene.add.text(0, -38, '', {
+      fontFamily: 'monospace', fontSize: '8px', fontStyle: '700',
+      color: '#ffffff', stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(10).setVisible(false);
+    this.add([this.shadow, this.body, this.hpBg, this.hpFill, this._typeLabel]);
 
     this.alive = false;
     this.kind = 'soldier';
@@ -84,6 +105,14 @@ export class Enemy extends Phaser.GameObjects.Container {
     } else {
       this.body.setRotation(p.angle + Math.PI / 2);
     }
+
+    // Configure type badge
+    const badgeY = -(this.hitRadius + 10);
+    this._typeLabel.setText(TYPE_LABEL[kind] ?? '');
+    this._typeLabel.setColor(TYPE_BADGE_COLOR[kind] ?? '#ffffff');
+    this._typeLabel.y = badgeY;
+    this._typeLabel.setVisible(kind !== 'boss' && (TYPE_LABEL[kind] ?? '') !== '');
+
     this.setAlpha(0).setScale(0.6);
     this.setVisible(true).setActive(true);
     this.scene.tweens.add({
@@ -115,6 +144,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     }
     if (p.done) {
       this.alive = false;
+      this._typeLabel?.setVisible(false);
       this.setVisible(false).setActive(false);
       return { reachedEnd: true, damage: this.damage };
     }
@@ -145,6 +175,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     }
     if (this.hp <= 0) {
       this.alive = false;
+      this._typeLabel?.setVisible(false);
       this.scene.tweens.add({
         targets: this, alpha: 0, scale: 0.7, y: this.y - 6,
         duration: 230, ease: 'Cubic.Out',
