@@ -17,6 +17,7 @@ import {
   GAME, SPAWN, SPEED, PROB, COMBO, SCORE, GEMS_PER_RARE,
   COMBO_RANKS, SCORE_MILESTONES, COLORS, SKIN_EFFECTS,
   JUDGMENT, JUDGMENT_COLORS, LEVELS, STAGES, getStage,
+  FEVER, PERFECT_CHAIN,
 } from '../config.js';
 
 const POOL_SIZE = 32;
@@ -65,6 +66,13 @@ export class GameScene extends Phaser.Scene {
     this.reachedMilestones = new Set();
     this.levelIdx = 0;
     this.currentLevel = LEVELS[0];
+
+    // FEVER MODE
+    this.fever = false;
+    this.feverTimer = 0;
+
+    // PERFECT CHAIN
+    this.perfectChain = 0;
     // 스폰 레인 기록 — 양엄지 교차 패턴을 위해 직전 사이드를 기억한다.
     this._lastLane = null;
 
@@ -121,6 +129,12 @@ export class GameScene extends Phaser.Scene {
     this.comboBarBg = this.add.graphics().setDepth(200);
     this.comboBar = this.add.graphics().setDepth(201);
     this.drawComboBar();
+
+    // FEVER HUD 배너 (평소엔 숨김)
+    this.feverBanner = this.add.text(width / 2, 72, '🔥 FEVER!', {
+      fontFamily: FONT.display, fontSize: '28px', fontStyle: '900',
+      color: '#ff9f00', stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(202).setAlpha(0).setLetterSpacing(4);
 
     // 네온 콤보 테두리
     this.borderFx = this.add.graphics().setDepth(500);
@@ -483,10 +497,17 @@ export class GameScene extends Phaser.Scene {
       // 레벨 진행 체크
       this.checkLevelProgression();
 
+      // FEVER 타이머
+      if (this.fever) {
+        this.feverTimer -= dt;
+        if (this.feverTimer <= 0) this.endFever();
+      }
+
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnOrb();
-        this.spawnTimer = this.currentLevel.spawn * this.stage.spawnMul;
+        const feverSpawnMul = this.fever ? FEVER.spawnAccel : 1;
+        this.spawnTimer = this.currentLevel.spawn * this.stage.spawnMul * feverSpawnMul;
       }
 
       if (this.remaining <= 0) this.endSession();
@@ -560,9 +581,10 @@ export class GameScene extends Phaser.Scene {
     const y = -40;
 
     // 스테이지 배수 적용: 속도/스폰 간격/폭탄·레어 확률 전부 스테이지 성격에 맞춤.
-    const speed = this.currentLevel.speed * this.stage.speedMul;
-    const bombProb = this.currentLevel.bomb * this.stage.bombMul;
-    const rareProb = PROB.rare * this.stage.rareMul;
+    const feverRareMul = this.fever ? FEVER.rareMul : 1;
+    const speed    = this.currentLevel.speed * this.stage.speedMul;
+    const bombProb = this.fever ? 0 : this.currentLevel.bomb * this.stage.bombMul;
+    const rareProb = PROB.rare * this.stage.rareMul * feverRareMul;
 
     const roll = Math.random();
     let kind;
@@ -605,6 +627,7 @@ export class GameScene extends Phaser.Scene {
 
   onOrbTap(obj) {
     if (!this.isPlaying || !obj || !obj.alive) return;
+    const { width } = this.scale;
     const kind = obj.kind;
 
     if (kind === ORB_KIND.BOMB) {
@@ -626,6 +649,30 @@ export class GameScene extends Phaser.Scene {
     const judge = this.judgeOrb(obj);
     this.showJudgmentFeedback(judge.tier, obj.x, obj.y);
 
+    // PERFECT CHAIN 추적
+    if (judge.tier === 'PERFECT') {
+      this.perfectChain++;
+      if (this.perfectChain % PERFECT_CHAIN.step === 0) {
+        const tierIdx = Math.min(
+          Math.floor(this.perfectChain / PERFECT_CHAIN.step) - 1,
+          PERFECT_CHAIN.bonuses.length - 1,
+        );
+        const chainBonus = PERFECT_CHAIN.bonuses[tierIdx];
+        this.score += chainBonus;
+        Juice.flash(this, PERFECT_CHAIN.color, 200);
+        Juice.ring(this, width / 2, this.judgmentY, {
+          color: PERFECT_CHAIN.color, radius: 280, count: 2, duration: 500,
+        });
+        Juice.popText(this, width / 2, this.judgmentY - 60,
+          `PERFECT ×${this.perfectChain}  +${chainBonus}`, {
+            color: PERFECT_CHAIN.color, size: 34,
+          });
+        Audio.milestone?.();
+      }
+    } else {
+      this.perfectChain = 0;
+    }
+
     const now = this.time.now;
     const inWindow = (now - this.lastTapAt) < COMBO.windowMs;
     this.combo = inWindow ? this.combo + 1 : 1;
@@ -633,9 +680,13 @@ export class GameScene extends Phaser.Scene {
     this.tapsMade++;
     if (this.combo > this.bestCombo) this.bestCombo = this.combo;
 
+    // Fever 트리거 체크
+    if (!this.fever && this.combo >= FEVER.triggerCombo) this.startFever();
+
     const base = kind === ORB_KIND.RARE ? SCORE.rare : SCORE.normal;
     const comboMul = Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul);
-    const mul = comboMul * judge.mul;
+    const feverMul = this.fever ? FEVER.scoreMul : 1;
+    const mul = comboMul * judge.mul * feverMul;
     const gained = Math.round(base * mul);
     const prevScore = this.score;
     this.score += gained;
@@ -792,10 +843,53 @@ export class GameScene extends Phaser.Scene {
 
   resetCombo() {
     this.combo = 0;
+    this.perfectChain = 0;
     this.hudCombo.setText('');
     this.borderAlpha = 0;
     this.drawBorder();
     this.drawComboBar();
+  }
+
+  startFever() {
+    if (this.fever) return;
+    this.fever = true;
+    this.feverTimer = FEVER.duration;
+    const { width, height } = this.scale;
+
+    // 진입 연출: 화이트아웃 → 골드
+    Juice.flash(this, 0xffffff, 80);
+    this.time.delayedCall(80, () => Juice.flash(this, FEVER.color, 300));
+    Juice.ring(this, width / 2, height / 2, {
+      color: FEVER.color, radius: 320, count: 3, duration: 600,
+    });
+    Audio.fanfare?.();
+    this.cameras.main.setBackgroundColor('#1a0f00');
+
+    // FEVER! 배너 표시
+    this.tweens.add({
+      targets: this.feverBanner, alpha: 1,
+      scaleY: { from: 0.4, to: 1 },
+      duration: 220, ease: 'Back.Out',
+    });
+    // 배너 맥동
+    this._feverPulseTween = this.tweens.add({
+      targets: this.feverBanner,
+      alpha: { from: 0.7, to: 1 },
+      scale: { from: 0.95, to: 1.08 },
+      duration: 300, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+    });
+  }
+
+  endFever() {
+    this.fever = false;
+    const bgHex = '#' + this.stage.bgBase.toString(16).padStart(6, '0');
+    this.cameras.main.setBackgroundColor(bgHex);
+    Juice.flash(this, COLORS.cyan, 140);
+    Juice.ring(this, this.scale.width / 2, this.scale.height / 2, {
+      color: FEVER.color, radius: 400, count: 3, duration: 700,
+    });
+    if (this._feverPulseTween) { this._feverPulseTween.stop(); this._feverPulseTween = null; }
+    this.tweens.add({ targets: this.feverBanner, alpha: 0, duration: 300 });
   }
 
   drawBgPulse() {
@@ -832,6 +926,7 @@ export class GameScene extends Phaser.Scene {
 
   endSession() {
     this.isPlaying = false;
+    if (this.fever) this.endFever();
     Audio.stopBgm?.({ fadeOut: 0.4 });
 
     // 1) 남아있는 오브를 깔끔히 정리 — 터트리듯 수축 페이드아웃

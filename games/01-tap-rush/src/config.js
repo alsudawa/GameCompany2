@@ -104,6 +104,23 @@ export const COLORS = {
   dim: 0x8a8aa8,
 };
 
+// FEVER MODE — 콤보 임계값 달성 시 단기 폭발 이벤트
+export const FEVER = {
+  triggerCombo: 20,      // 이 콤보에 진입하면 Fever 발동
+  duration:      6,      // 지속 시간 (초)
+  scoreMul:      2.5,    // Fever 중 점수 배율
+  spawnAccel:    0.70,   // 스폰 간격 × 0.70 → 30% 빠르게
+  rareMul:       2.0,    // 레어 확률 × 2
+  color:         0xff9f00,
+};
+
+// PERFECT CHAIN — 연속 PERFECT 판정 보너스
+export const PERFECT_CHAIN = {
+  step:    5,                        // 매 5연속마다 보너스 지급
+  bonuses: [500, 1000, 2000, 4000], // step 1/2/3/4+ 대응 보너스
+  color:   0xffd24a,
+};
+
 export const SKIN_EFFECTS = {
   default: { color: COLORS.cyan, particle: COLORS.cyan },
   neon:    { color: COLORS.magenta, particle: COLORS.magenta },

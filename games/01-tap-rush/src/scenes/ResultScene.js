@@ -3,6 +3,7 @@
 import { Audio } from '../../../../shared/audio.js';
 import { Juice } from '../../../../shared/juice.js';
 import { UI, FONT } from '../../../../shared/ui.js';
+import { Storage } from '../../../../shared/storage.js';
 import { GRADE_CUTS, COLORS } from '../config.js';
 
 function gradeFor(score) {
@@ -24,6 +25,9 @@ export class ResultScene extends Phaser.Scene {
     const { width, height } = this.scale;
     this.cameras.main.setBackgroundColor('#05050c');
 
+    // 스트릭 기록 (오늘 첫 플레이 체크)
+    const streak = Storage.recordPlay();
+
     // 배경 레이어
     UI.drawGrid(this, width, height, { cell: 40, color: 0x0f1530, alpha: 0.45, depth: -25 });
     UI.drawViewportFrame(this, width, height, { color: 0x00e5ff, alpha: 0.35, depth: -8, inset: 4 });
@@ -42,6 +46,27 @@ export class ResultScene extends Phaser.Scene {
       color: '#e8ecf5',
     }).setOrigin(0.5).setLetterSpacing(6);
 
+    // 데일리 스트릭 뱃지 (2일 이상 연속 플레이 시 표시)
+    if (streak.isNewDay && streak.streakDays >= 2) {
+      const streakLabel = streak.streakDays >= 5
+        ? `🔥 ${streak.streakDays}일 연속!`
+        : `🔥 ${streak.streakDays}DAY STREAK`;
+      const streakTag = this.add.text(width / 2, 78, streakLabel, {
+        fontFamily: FONT.mono, fontSize: '11px', fontStyle: '700',
+        color: '#ff9f00',
+      }).setOrigin(0.5).setLetterSpacing(3);
+      this.tweens.add({
+        targets: streakTag, alpha: { from: 0.6, to: 1 },
+        duration: 600, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+      });
+      if (streak.bonusCoins > 0) {
+        this.add.text(width / 2, 96, `+${streak.bonusCoins} COINS BONUS`, {
+          fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
+          color: '#ffd24a',
+        }).setOrigin(0.5).setLetterSpacing(2);
+      }
+    }
+
     // 등급 배지 — 헥사곤 훈장
     this.drawHexMedal(width / 2, height * 0.28, 110, g);
 
@@ -56,7 +81,7 @@ export class ResultScene extends Phaser.Scene {
     sep.lineStyle(1, 0x00e5ff, 0.5);
     sep.strokeLineShape(new Phaser.Geom.Line(width * 0.15, height * 0.56, width * 0.85, height * 0.56));
 
-    // NEW BEST 뱃지
+    // NEW BEST / ALMOST BEST 뱃지
     if (d.isBest) {
       const tag = this.add.text(width / 2, height * 0.52, '▲  NEW BEST', {
         fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
@@ -66,14 +91,36 @@ export class ResultScene extends Phaser.Scene {
         targets: tag, alpha: { from: 0.5, to: 1 },
         duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut',
       });
+    } else {
+      const profile = Storage.load();
+      const best = profile.bestScores['tap-rush'] || 0;
+      if (best > 0 && d.score / best >= 0.95) {
+        const tag = this.add.text(width / 2, height * 0.52, '△  ALMOST BEST!', {
+          fontFamily: FONT.display, fontSize: '13px', fontStyle: '900',
+          color: '#00e5ff',
+        }).setOrigin(0.5).setLetterSpacing(4);
+        this.tweens.add({
+          targets: tag, alpha: { from: 0.4, to: 1 },
+          duration: 500, yoyo: true, repeat: -1, ease: 'Sine.InOut',
+        });
+      }
     }
 
-    // Stat 카드 (2x2)
+    // Stat 카드 (2x2) — SCORE는 카운트업으로 극적 연출
     const cardY1 = height * 0.63, cardY2 = height * 0.74;
-    this.drawStatCard(width * 0.27, cardY1, 'SCORE',      d.score.toLocaleString(), 0x00e5ff);
-    this.drawStatCard(width * 0.73, cardY1, 'BEST COMBO', String(d.bestCombo),      0xff2bd6);
-    this.drawStatCard(width * 0.27, cardY2, 'COINS  +',   String(d.coins),          0xffd24a);
-    this.drawStatCard(width * 0.73, cardY2, 'GEMS   +',   String(d.gems),           0xb388ff);
+    this.scoreText = this.drawStatCard(width * 0.27, cardY1, 'SCORE', '0', 0x00e5ff);
+    this.drawStatCard(width * 0.73, cardY1, 'BEST COMBO', String(d.bestCombo), 0xff2bd6);
+    this.drawStatCard(width * 0.27, cardY2, 'COINS  +',   String(d.coins),     0xffd24a);
+    this.drawStatCard(width * 0.73, cardY2, 'GEMS   +',   String(d.gems),      0xb388ff);
+
+    // 점수 카운트업 (0.8초 후 시작, 완료 후 펀치 연출)
+    this.time.delayedCall(800, () => {
+      Juice.countUp(this, this.scoreText, 0, d.score, 900);
+      this.time.delayedCall(920, () => {
+        Juice.punch(this, this.scoreText, 1.3, 200);
+        Juice.ring(this, width * 0.27, cardY1, { color: 0x00e5ff, radius: 100, count: 1 });
+      });
+    });
 
     // 버튼 — RETRY / MENU
     this.makeButton(width / 2 - 90, height * 0.89, 160, 60, 'RETRY', 0x00e5ff, () => {
@@ -156,10 +203,11 @@ export class ResultScene extends Phaser.Scene {
       fontFamily: FONT.mono, fontSize: '10px', fontStyle: '700',
       color: '#6b708f',
     }).setLetterSpacing(3);
-    this.add.text(cx + w / 2 - 12, cy + 10, value, {
+    const valueText = this.add.text(cx + w / 2 - 12, cy + 10, value, {
       fontFamily: FONT.display, fontSize: '24px', fontStyle: '900',
       color: hex,
     }).setOrigin(1, 0.5).setLetterSpacing(1);
+    return valueText;
   }
 
   makeButton(x, y, w, h, label, color, onClick) {

@@ -17,6 +17,8 @@ const DEFAULT_PROFILE = {
   lastLoginISO: null,
   firstPurchaseDone: false,
   seasonPass: { active: false, expiresISO: null, claimed: [] },
+  streakDays: 0,           // 연속 플레이 일수
+  lastPlayedDate: null,    // 'YYYY-MM-DD' (마지막 플레이 날짜)
 };
 
 function safeParse(raw) {
@@ -133,5 +135,34 @@ export const Storage = {
   update(patch) {
     const p = this.load();
     this.save({ ...p, ...patch });
+  },
+
+  // 플레이 기록 후 스트릭 갱신. 오늘 첫 플레이면 streak++, 이틀 이상 공백이면 1로 리셋.
+  // 반환: { streakDays, isNewDay, bonusCoins }
+  recordPlay() {
+    const p = this.load();
+    const todayStr = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const last = p.lastPlayedDate;
+
+    if (last === todayStr) {
+      return { streakDays: p.streakDays || 1, isNewDay: false, bonusCoins: 0 };
+    }
+
+    let newStreak = 1;
+    if (last) {
+      const lastDate = new Date(last);
+      const today = new Date(todayStr);
+      const diffDays = Math.round((today - lastDate) / 86400000);
+      if (diffDays === 1) newStreak = (p.streakDays || 0) + 1;
+    }
+
+    const STREAK_COINS = [0, 10, 25, 50, 100]; // 1일/2일/3일/4일/5일+
+    const bonusCoins = STREAK_COINS[Math.min(newStreak - 1, STREAK_COINS.length - 1)];
+
+    p.streakDays = newStreak;
+    p.lastPlayedDate = todayStr;
+    p.coins = Math.max(0, (p.coins || 0) + bonusCoins);
+    this.save(p);
+    return { streakDays: newStreak, isNewDay: true, bonusCoins };
   },
 };
