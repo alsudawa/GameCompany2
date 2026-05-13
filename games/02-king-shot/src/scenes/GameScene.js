@@ -8,6 +8,7 @@ import { Juice } from '../../../../shared/juice.js';
 import { Storage } from '../../../../shared/storage.js';
 import { Analytics } from '../../../../shared/analytics.js';
 import { getLevel } from '../maps/levels.js';
+import { rollPerks } from '../meta/perks.js';
 import { buildPath, tilePxCenter, clampToPath } from '../maps/path.js';
 import { computeBonuses, totalUpgradeLevels } from '../meta/upgrades.js';
 import { King } from '../entities/King.js';
@@ -21,7 +22,7 @@ const ENEMY_POOL = 100;
 const PROJECTILE_POOL = 160;
 const COIN_POOL = 60;
 const WAVE_BREATHER = 3.0;       // 웨이브 간 휴식(초)
-const KING_BAND = 30;            // 왕이 길 중심선에서 벗어날 수 있는 최대 거리(px) — 적 차선과 동일
+const KING_BAND = 45;            // 왕이 길 중심선에서 벗어날 수 있는 최대 거리(px)
 const SLOT_REACH = 65;           // 타워 슬롯 주변 워커블 범위 (path band와 연결되어 슬롯 접근 가능)
 
 // 슬롯에 배정할 타워 종류 — 라운드별 다르게 (단조로움 방지)
@@ -578,15 +579,31 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = WAVE_BREATHER;
-      // 보너스 보석 (드롭 형태로 영웅 근처에)
-      for (let i = 0; i < 5; i++) {
+      // FLAWLESS 판정 — 이번 웨이브에서 왕좌에 피해가 없었으면 보너스
+      const flawless = !this._hadLeakThisWave;
+      this._hadLeakThisWave = false;
+      const gemCount = flawless ? 3 : 1;
+      for (let i = 0; i < gemCount; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
                        this.king.y + (Math.random() - 0.5) * 60, 5);
       }
-      Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
-        '+25 BONUS', { color: COLORS.goldHud, size: 18 });
+      if (flawless) {
+        Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+          'FLAWLESS! +3 GEM', { color: 0x80ff80, size: 18 });
+        Juice.flash(this, 0x40ff80, 240);
+      } else {
+        Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
+          '+BONUS', { color: COLORS.goldHud, size: 16 });
+      }
+      // 웨이브 클리어 HP 회복 — 다음 웨이브 기대감
+      if (this.king.hp < this.king.maxHp) {
+        this.king.hp = Math.min(this.king.maxHp, this.king.hp + 1);
+        Juice.popText(this, this.king.x, this.king.y - 28, '+1 HP',
+          { color: 0xff6060, size: 13, rise: 20, duration: 600 });
+      }
       this.updateHud();
+      // 퍽 선택 UI (웨이브 클리어 후 선택, breather는 선택 완료 후 시작)
+      this.showPerkChoice();
     }
   }
 
@@ -730,6 +747,140 @@ export class GameScene extends Phaser.Scene {
     if (this.shopButtons) this.shopButtons.forEach(b => b.draw());
   }
 
+  // ────────────── 웨이브 간 퍽 선택 UI ──────────────
+  showPerkChoice() {
+    const { width, height } = this.scale;
+    const perks = rollPerks(3);
+
+    // 반투명 오버레이
+    const overlay = this.add.rectangle(0, 0, width, height, 0x000000, 0.72)
+      .setOrigin(0).setDepth(800).setInteractive();
+
+    // 타이틀
+    const title = this.add.text(width / 2, height * 0.18, 'CHOOSE A BOON', {
+      fontFamily: FONT.display, fontSize: '26px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(801).setAlpha(0);
+    title.setLetterSpacing?.(4);
+
+    const cardW = 118, cardH = 148, gap = 14;
+    const totalW = perks.length * cardW + (perks.length - 1) * gap;
+    const startX = (width - totalW) / 2 + cardW / 2;
+    const cardY = height * 0.52;
+
+    const containers = [];
+
+    perks.forEach((perk, i) => {
+      const cx = startX + i * (cardW + gap);
+      const c = this.add.container(cx, cardY).setDepth(802).setAlpha(0);
+
+      // 카드 배경
+      const bg = this.add.graphics();
+      bg.fillStyle(0x000000, 0.55);
+      bg.fillRoundedRect(-cardW / 2 + 2, -cardH / 2 + 2, cardW, cardH, 10);
+      bg.fillStyle(COLORS.parchment, 0.97);
+      bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+      bg.lineStyle(2.5, COLORS.woodDark, 1);
+      bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+      bg.lineStyle(1.5, perk.color, 0.9);
+      bg.strokeRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW - 6, cardH - 6, 8);
+
+      // 색상 상단 띠
+      const topBand = this.add.graphics();
+      topBand.fillStyle(perk.color, 0.18);
+      topBand.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW - 6, 38, { tl: 8, tr: 8, bl: 0, br: 0 });
+
+      // 아이콘
+      const icon = this.add.text(0, -cardH / 2 + 22, perk.icon, {
+        fontFamily: FONT.display, fontSize: '28px', fontStyle: '900',
+        color: Phaser.Display.Color.IntegerToColor(perk.color).rgba,
+        stroke: '#3e2e1e', strokeThickness: 2,
+      }).setOrigin(0.5);
+
+      // 이름
+      const name = this.add.text(0, -cardH / 2 + 54, perk.name, {
+        fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+        color: '#3e2e1e',
+        wordWrap: { width: cardW - 16 },
+        align: 'center',
+      }).setOrigin(0.5);
+      name.setLetterSpacing?.(1);
+
+      // 구분선
+      const divider = this.add.graphics();
+      divider.lineStyle(1, COLORS.woodDark, 0.4);
+      divider.beginPath();
+      divider.moveTo(-cardW / 2 + 12, -cardH / 2 + 68);
+      divider.lineTo(cardW / 2 - 12, -cardH / 2 + 68);
+      divider.strokePath();
+
+      // 설명
+      const desc = this.add.text(0, -cardH / 2 + 100, perk.desc, {
+        fontFamily: FONT.body, fontSize: '10px', fontStyle: '400',
+        color: '#5a4a3a',
+        wordWrap: { width: cardW - 20 },
+        align: 'center',
+      }).setOrigin(0.5);
+
+      c.add([bg, topBand, icon, name, divider, desc]);
+      c.setSize(cardW, cardH);
+      c.setInteractive({ useHandCursor: true });
+
+      // hover 효과
+      c.on('pointerover', () => {
+        this.tweens.add({ targets: c, scaleX: 1.06, scaleY: 1.06, y: cardY - 8, duration: 120 });
+        bg.clear();
+        bg.fillStyle(0x000000, 0.55);
+        bg.fillRoundedRect(-cardW / 2 + 2, -cardH / 2 + 2, cardW, cardH, 10);
+        bg.fillStyle(COLORS.parchment, 1);
+        bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        bg.lineStyle(3, perk.color, 1);
+        bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        bg.lineStyle(1.5, perk.color, 1);
+        bg.strokeRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW - 6, cardH - 6, 8);
+      });
+      c.on('pointerout', () => {
+        this.tweens.add({ targets: c, scaleX: 1, scaleY: 1, y: cardY, duration: 120 });
+      });
+
+      // 선택
+      c.on('pointerdown', () => {
+        perk.apply(this);
+        // 선택된 카드 확대 후 오버레이 전체 제거
+        this.tweens.add({
+          targets: c, scale: 1.18, duration: 140, yoyo: false,
+          onComplete: () => {
+            Juice.flash(this, perk.color, 200);
+            Juice.popText(this, width / 2, height * 0.30, perk.name,
+              { color: perk.color, size: 20, rise: 28, duration: 700 });
+            // 오버레이 + 카드 모두 페이드 아웃
+            this.tweens.add({
+              targets: [overlay, title, ...containers],
+              alpha: 0, duration: 280,
+              onComplete: () => {
+                overlay.destroy(); title.destroy();
+                containers.forEach(ct => ct.destroy());
+                // breather 후 다음 웨이브 시작
+                this.waveBreather = WAVE_BREATHER;
+              },
+            });
+          },
+        });
+      });
+
+      containers.push(c);
+
+      // 카드 등장 애니메이션 (순서대로 딜레이)
+      this.tweens.add({
+        targets: c, alpha: 1, y: { from: cardY + 30, to: cardY },
+        duration: 320, ease: 'Back.Out', delay: 80 + i * 100,
+      });
+    });
+
+    // 타이틀 등장
+    this.tweens.add({ targets: title, alpha: 1, duration: 260, delay: 60 });
+  }
+
   spawnEnemy(kind) {
     const e = this.enemies.find(en => !en.alive);
     if (!e) return;
@@ -768,16 +919,48 @@ export class GameScene extends Phaser.Scene {
     const ratio = Math.max(0, this.boss.hp / this.boss.maxHp);
     const w = this.scale.width - 60;
     this.bossHpFill.width = w * ratio;
-    // 50% 분기 — 미니언 4기 소환 + 화면 플래시
+
+    // ── 보스 3페이즈 시스템 ──────────────────────────────────────
+    // Phase 1 (75%): 속도 40% 증가
+    if (!this.boss._phase1 && ratio <= 0.75) {
+      this.boss._phase1 = true;
+      this.boss.baseSpeed *= 1.40;
+      Juice.flash(this, 0xff8a3a, 180);
+      Juice.shake(this, 0.010, 180);
+      Juice.popText(this, this.boss.x, this.boss.y - 30, 'PHASE 2 — CHARGE!',
+        { color: 0xff8a3a, size: 15, rise: 28, duration: 700 });
+    }
+    // Phase 2 (50%): 미니언 소환 + ENRAGED (기존 로직 유지)
     if (!this.boss._mid && ratio <= 0.5) {
       this.boss._mid = true;
       Juice.flash(this, 0xc8302d, 200);
       Juice.shake(this, 0.014, 220);
       Juice.popText(this, this.boss.x, this.boss.y - 30, 'ENRAGED!',
         { color: 0xff5050, size: 16, rise: 28, duration: 700 });
-      // 미니언 — 즉시 4기 추가 스폰 (보스 위치는 path 따라 진행 중이므로 새 적은 path 시작점에서 등장)
       for (let i = 0; i < 4; i++) {
         this.time.delayedCall(i * 220, () => this.spawnEnemy('scout'));
+      }
+      // 힐러 1기 소환 — 보스를 보호
+      this.time.delayedCall(600, () => this.spawnEnemy('healer'));
+    }
+    // Phase 3 (25%): 슬로우 아우라 + 마지막 발악 미니언
+    if (!this.boss._phase3 && ratio <= 0.25) {
+      this.boss._phase3 = true;
+      this.boss._slowAura = true;
+      Juice.flash(this, 0x8000ff, 280);
+      Juice.shake(this, 0.018, 280);
+      Juice.popText(this, this.boss.x, this.boss.y - 30, 'LAST STAND!',
+        { color: 0xcc44ff, size: 16, rise: 32, duration: 800 });
+      for (let i = 0; i < 6; i++) {
+        this.time.delayedCall(i * 180, () => this.spawnEnemy(i % 2 === 0 ? 'scout' : 'soldier'));
+      }
+    }
+    // 슬로우 아우라: 보스 주변 적을 둔화 (영웅 접근 억제)
+    if (this.boss._slowAura) {
+      for (const e of this.enemies) {
+        if (!e.alive || e === this.boss) continue;
+        const bd = Math.hypot(e.x - this.boss.x, e.y - this.boss.y);
+        if (bd < 70) e.applySlow(0.25, 400);
       }
     }
   }
@@ -887,44 +1070,48 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  // 데미지 숫자 — 위로 떠오르며 페이드
+  // 데미지 숫자 — 위로 떠오르며 페이드, 크리티컬(10% 확률) 시 크게 표시
   spawnDmgNumber(x, y, n, kind = 'archer') {
-    const color = kind === 'frost' ? '#a0e0ff'
+    const isCrit = Math.random() < 0.10;
+    const color = isCrit ? '#ffff44'
+                : kind === 'frost' ? '#a0e0ff'
                 : kind === 'mortar' ? '#ffd070'
                 : kind === 'cannon' ? '#ffaa55'
                 : '#fff5d8';
-    const t = this.add.text(x + (Math.random() - 0.5) * 12, y, String(n), {
-      fontFamily: FONT.display, fontSize: '14px', fontStyle: '900',
-      color, stroke: '#3e2e1e', strokeThickness: 2,
+    const fontSize = isCrit ? '20px' : '14px';
+    const label = isCrit ? 'CRIT ' + String(n) : String(n);
+    const t = this.add.text(x + (Math.random() - 0.5) * 12, y, label, {
+      fontFamily: FONT.display, fontSize, fontStyle: '900',
+      color, stroke: '#3e2e1e', strokeThickness: isCrit ? 3 : 2,
     }).setOrigin(0.5).setDepth(925);
     this.tweens.add({
-      targets: t, y: y - 22, alpha: { from: 1, to: 0 },
-      scale: { from: 0.7, to: 1.05 },
-      duration: 480, ease: 'Cubic.Out',
+      targets: t, y: y - (isCrit ? 34 : 22), alpha: { from: 1, to: 0 },
+      scale: { from: isCrit ? 1.1 : 0.7, to: isCrit ? 1.4 : 1.05 },
+      duration: isCrit ? 600 : 480, ease: 'Cubic.Out',
       onComplete: () => t.destroy(),
     });
   }
 
-  // 화살이 박힌 듯한 임팩트 — 확장하는 + 모양 대신, 짧은 플래시 + 살짝 튀는 부스러기
+  // 타격 임팩트 플래시 — 반경 확대로 모바일에서도 시인성 향상
   spawnHitFlash(x, y, kind = 'archer') {
     const color = kind === 'frost' ? 0xa0e0ff
                 : kind === 'mortar' || kind === 'cannon' ? 0xffaa55
                 : 0xfff4a0;
-    const flash = this.add.circle(x, y, 8, color, 0.85).setDepth(920);
+    const flash = this.add.circle(x, y, 14, color, 0.9).setDepth(920);
     this.tweens.add({
-      targets: flash, alpha: 0, scale: { from: 1.4, to: 0.6 },
-      duration: 130, ease: 'Cubic.Out',
+      targets: flash, alpha: 0, scale: { from: 1.5, to: 0.5 },
+      duration: 180, ease: 'Cubic.Out',
       onComplete: () => flash.destroy(),
     });
-    // 작은 부스러기 3개 — 임팩트 지점에서 약간만 튐 (이전엔 +shape이 1.6배로 부풀어 튕겨나가 보였음)
-    for (let i = 0; i < 3; i++) {
+    // 부스러기 5개
+    for (let i = 0; i < 5; i++) {
       const a = Math.random() * Math.PI * 2;
-      const d = 6 + Math.random() * 6;
-      const sp = this.add.circle(x, y, 1.2, color, 1).setDepth(919);
+      const d = 8 + Math.random() * 10;
+      const sp = this.add.circle(x, y, 1.6, color, 1).setDepth(919);
       this.tweens.add({
         targets: sp,
         x: x + Math.cos(a) * d, y: y + Math.sin(a) * d,
-        alpha: 0, duration: 180, ease: 'Cubic.Out',
+        alpha: 0, duration: 220, ease: 'Cubic.Out',
         onComplete: () => sp.destroy(),
       });
     }
@@ -999,6 +1186,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   onEnemyReachedThrone(e, dmg) {
+    this._hadLeakThisWave = true;
     const destroyed = this.building.takeDamage(dmg);
     Juice.flash(this, COLORS.capeRed, 160);
     Juice.shake(this, 0.012, 160);

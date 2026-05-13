@@ -9,6 +9,7 @@ const TINT_FOR = {
   heavy:   0xffffff,
   elite:   0xffffff,
   boss:    0xff8080,
+  healer:  0x80ff80,
 };
 
 export class Enemy extends Phaser.GameObjects.Container {
@@ -34,6 +35,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.slowUntil = 0; this.slowStrength = 0;
     this.hitRadius = 16;
     this._hpFullW = 30;
+    this._healTick = 0;
 
     this.setVisible(false).setActive(false);
   }
@@ -52,6 +54,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.bounty = cfg.bounty;
     this.scoreVal = cfg.score;
     this.slowUntil = 0;
+    this._healTick = 0;
     // 좌우 차선 오프셋 — 일렬이 아닌 무리로 보이게
     const laneRange = (kind === 'boss') ? 0 : 22;
     this.laneOffset = (Math.random() - 0.5) * 2 * laneRange;
@@ -113,6 +116,36 @@ export class Enemy extends Phaser.GameObjects.Container {
     } else {
       this.body.setRotation(p.angle + Math.PI / 2);
     }
+    // 힐러: 0.5초마다 주변 60px 아군 HP 회복 + 녹색 링 이펙트
+    if (this.kind === 'healer') {
+      this._healTick += dt;
+      if (this._healTick >= 0.5) {
+        this._healTick = 0;
+        let healed = false;
+        for (const e of scene.enemies) {
+          if (!e.alive || e === this) continue;
+          const hd = Math.hypot(e.x - this.x, e.y - this.y);
+          if (hd < 60 && e.hp < e.maxHp) {
+            e.hp = Math.min(e.maxHp, e.hp + 8);
+            const ratio = Math.max(0, e.hp / e.maxHp);
+            e.hpFill.width = e._hpFullW * ratio;
+            healed = true;
+          }
+        }
+        if (healed) {
+          // 녹색 펄스 링 — 힐 범위 시각화
+          const ring = scene.add.circle(this.x, this.y, 8, 0x40ff80, 0.7).setDepth(55);
+          scene.tweens.add({
+            targets: ring,
+            scaleX: 60 / 8, scaleY: 60 / 8,
+            alpha: 0,
+            duration: 400, ease: 'Cubic.Out',
+            onComplete: () => ring.destroy(),
+          });
+        }
+      }
+    }
+
     if (p.done) {
       this.alive = false;
       this.setVisible(false).setActive(false);

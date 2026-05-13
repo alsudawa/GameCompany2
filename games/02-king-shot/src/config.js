@@ -116,6 +116,8 @@ export const ENEMIES = {
   heavy:   { hp: 220,  speed: 45,  damage: 2, score: 30, bounty: 18, sprite: 'robot',   scale: 0.6 },
   elite:   { hp: 420,  speed: 60,  damage: 2, score: 60, bounty: 32, sprite: 'elite',   scale: 0.6 },
   boss:    { hp: 2800, speed: 28,  damage: 5, score: 600, bounty: 200, sprite: 'robot',  scale: 1.1 },
+  // 힐러: 주변 아군 HP 회복 — 우선 처치 대상, 사망 시 보너스 보상
+  healer:  { hp: 90,   speed: 52,  damage: 1, score: 55,  bounty: 28,  sprite: 'zombie',  scale: 0.5 },
 };
 
 export const GRADE_CUTS = {

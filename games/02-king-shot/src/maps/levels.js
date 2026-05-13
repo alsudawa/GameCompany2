@@ -166,11 +166,11 @@ const LEVEL_CRYPT = {
     [7, 18, 'ROCK_SMALL'], [3, 23, 'ROCK_SMALL'],
   ],
   waves: [
-    { label: 'WAVE 1/5', units: [['soldier', 20, 0.24, 0]] },
-    { label: 'WAVE 2/5', units: [['heavy', 8, 0.55, 0], ['scout', 12, 0.18, 4]] },
-    { label: 'WAVE 3/5', units: [['soldier', 18, 0.2, 0], ['heavy', 10, 0.5, 4]] },
-    { label: 'WAVE 4/5', units: [['scout', 18, 0.15, 0], ['heavy', 12, 0.45, 4], ['elite', 3, 0.9, 10]] },
-    { label: 'WAVE 5 — BOSS', units: [['heavy', 14, 0.4, 0], ['scout', 16, 0.16, 5], ['boss', 1, 0, 14]] },
+    { label: 'WAVE 1/5', units: [['soldier', 16, 0.24, 0], ['scout', 4, 0.3, 6]] },
+    { label: 'WAVE 2/5', units: [['heavy', 8, 0.55, 0], ['scout', 12, 0.18, 4], ['healer', 2, 1.2, 7]] },
+    { label: 'WAVE 3/5', units: [['soldier', 18, 0.2, 0], ['heavy', 10, 0.5, 4], ['healer', 3, 1.0, 8]] },
+    { label: 'WAVE 4/5', units: [['scout', 18, 0.15, 0], ['heavy', 12, 0.45, 4], ['elite', 3, 0.9, 10], ['healer', 2, 1.5, 6]] },
+    { label: 'WAVE 5 — BOSS', units: [['heavy', 14, 0.4, 0], ['scout', 16, 0.16, 5], ['healer', 3, 1.2, 8], ['boss', 1, 0, 14]] },
   ],
 };
 
@@ -207,11 +207,11 @@ const LEVEL_THRONE = {
     [7, 13, 'BUSH'], [4, 18, 'ROCK_SMALL'], [10, 17, 'BUSH'],
   ],
   waves: [
-    { label: 'WAVE 1/5', units: [['soldier', 22, 0.22, 0]] },
-    { label: 'WAVE 2/5', units: [['soldier', 16, 0.2, 0], ['heavy', 8, 0.5, 4], ['scout', 12, 0.18, 6]] },
-    { label: 'WAVE 3/5', units: [['soldier', 22, 0.18, 0], ['heavy', 12, 0.45, 4], ['elite', 3, 0.9, 12]] },
-    { label: 'WAVE 4/5', units: [['scout', 22, 0.14, 0], ['heavy', 14, 0.42, 4], ['elite', 5, 0.8, 10]] },
-    { label: 'WAVE 5 — FINAL', units: [['soldier', 26, 0.14, 0], ['heavy', 16, 0.38, 5], ['elite', 5, 0.7, 10], ['boss', 2, 4, 16]] },
+    { label: 'WAVE 1/5', units: [['soldier', 18, 0.22, 0], ['heavy', 2, 0.8, 7]] },
+    { label: 'WAVE 2/5', units: [['soldier', 16, 0.2, 0], ['heavy', 8, 0.5, 4], ['scout', 12, 0.18, 6], ['healer', 2, 1.5, 5]] },
+    { label: 'WAVE 3/5', units: [['soldier', 22, 0.18, 0], ['heavy', 12, 0.45, 4], ['elite', 3, 0.9, 12], ['healer', 3, 1.2, 9]] },
+    { label: 'WAVE 4/5', units: [['scout', 22, 0.14, 0], ['heavy', 14, 0.42, 4], ['elite', 5, 0.8, 10], ['healer', 3, 1.0, 7]] },
+    { label: 'WAVE 5 — FINAL', units: [['soldier', 26, 0.14, 0], ['heavy', 16, 0.38, 5], ['elite', 5, 0.7, 10], ['healer', 4, 1.0, 8], ['boss', 2, 4, 16]] },
   ],
 };
 
