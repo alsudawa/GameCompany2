@@ -283,6 +283,35 @@ export class Orb extends Phaser.GameObjects.Container {
     });
   }
 
+  // PERFECT 판정 전용 팝 — 수평 스쿼시(찌그러짐) + 하이라이트 후 일반 pop으로 연결.
+  popPerfect() {
+    this.alive = false;
+    // 1단계: 수평 스쿼시 (충격 각인)
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: { from: 1, to: 1.55 },
+      scaleY: { from: 1, to: 0.50 },
+      duration: 55,
+      ease: 'Cubic.Out',
+      onComplete: () => {
+        // 2단계: 화이트 플래시 (body를 흰색으로 1프레임)
+        this.body.clear();
+        this.body.fillStyle(0xffffff, 1);
+        this.body.fillCircle(0, 0, this._radius);
+        // 3단계: 확산 팝
+        this.scene.tweens.add({
+          targets: this,
+          scaleX: 2.0,
+          scaleY: 2.0,
+          alpha: 0,
+          duration: 180,
+          ease: 'Cubic.Out',
+          onComplete: () => this.deactivate(),
+        });
+      },
+    });
+  }
+
   deactivate() {
     // 아직 alive=true 상태에서 들어왔다면 "낙하 중 놓침(미스)"
     // pop()이나 endSession()은 먼저 alive=false로 만드므로 여기선 제외.

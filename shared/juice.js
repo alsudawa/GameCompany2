@@ -198,6 +198,43 @@ export const Juice = {
     });
   },
 
+  // TAP ZONE 라인 히트 시 수평 방향 쉐브론 버스트 — 판정 라인이 "반응"하는 느낌.
+  // x: 탭한 오브의 X좌표, zoneY: judgmentY, color: 판정 색
+  zoneStab(scene, x, zoneY, color = 0x00e5ff) {
+    const len = 36;
+    const g = scene.add.graphics().setDepth(960);
+    g.lineStyle(3, color, 1);
+    // 왼쪽 쉐브론 ◂
+    g.beginPath();
+    g.moveTo(x - 10, zoneY);
+    g.lineTo(x - 10 - len, zoneY);
+    g.strokePath();
+    g.lineStyle(2, color, 0.7);
+    g.beginPath();
+    g.moveTo(x - 10, zoneY - 5);
+    g.lineTo(x - 10 - len * 0.5, zoneY - 5);
+    g.strokePath();
+    // 오른쪽 쉐브론 ▸
+    g.lineStyle(3, color, 1);
+    g.beginPath();
+    g.moveTo(x + 10, zoneY);
+    g.lineTo(x + 10 + len, zoneY);
+    g.strokePath();
+    g.lineStyle(2, color, 0.7);
+    g.beginPath();
+    g.moveTo(x + 10, zoneY - 5);
+    g.lineTo(x + 10 + len * 0.5, zoneY - 5);
+    g.strokePath();
+    scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      scaleX: { from: 1, to: 1.8 },
+      duration: 160,
+      ease: 'Cubic.Out',
+      onComplete: () => g.destroy(),
+    });
+  },
+
   // 간단한 스파크 하나 (탭 지점에 십자 반짝)
   spark(scene, x, y, color = 0xffffff, size = 28) {
     const g = scene.add.graphics().setDepth(920);

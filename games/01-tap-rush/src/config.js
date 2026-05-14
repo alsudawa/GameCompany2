@@ -15,6 +15,9 @@ export const GAME = {
 export const SPAWN = {
   intervalStart: 0.38,
   intervalEnd: 0.13,
+  clusterInterval: 8,   // seconds between cluster bursts
+  clusterCount: 3,      // orbs in rapid succession during cluster
+  centerChance: 0.12,   // probability of center-lane single orb
 };
 
 export const SPEED = {
@@ -39,9 +42,24 @@ export const LEVELS = [
 ];
 
 export const COMBO = {
-  windowMs: 720,
+  windowMs: 720,    // base window at combo 0
+  windowMin: 420,   // floor at combo 30+; tightens by 10ms per combo step
   bonusPerStep: 0.09,
   maxMul: 6.0,
+};
+
+// FEVER TIME — activates at comboThreshold, lasts durationMs
+export const FEVER = {
+  comboThreshold: 20,
+  durationMs: 6000,
+  spawnMul: 0.60,   // spawn interval multiplied (faster spawns)
+  rareMul: 4.5,     // rare probability multiplied
+  scoreMul: 3.0,    // score points multiplied
+};
+
+// COMBO SHIELD — charges after perfectsRequired consecutive PERFECTs
+export const SHIELD = {
+  perfectsRequired: 8,
 };
 
 export const SCORE = {
