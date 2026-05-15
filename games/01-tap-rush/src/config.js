@@ -41,7 +41,7 @@ export const LEVELS = [
 export const COMBO = {
   windowMs: 720,
   bonusPerStep: 0.09,
-  maxMul: 6.0,
+  maxMul: 8.0,
 };
 
 export const SCORE = {

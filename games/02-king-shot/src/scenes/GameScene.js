@@ -16,6 +16,7 @@ import { Projectile } from '../entities/Projectile.js';
 import { Building } from '../entities/Building.js';
 import { TowerSlot } from '../entities/TowerSlot.js';
 import { Coin } from '../entities/Coin.js';
+import { rollPerks } from '../meta/perks.js';
 
 const ENEMY_POOL = 100;
 const PROJECTILE_POOL = 160;
@@ -578,7 +579,6 @@ export class GameScene extends Phaser.Scene {
     if (this.waveIdx >= this.level.waves.length - 1) {
       this.victory();
     } else {
-      this.waveBreather = WAVE_BREATHER;
       // 보너스 보석 (드롭 형태로 영웅 근처에)
       for (let i = 0; i < 5; i++) {
         this.spawnCoin(this.king.x + (Math.random() - 0.5) * 60,
@@ -587,7 +587,110 @@ export class GameScene extends Phaser.Scene {
       Juice.popText(this, this.scale.width / 2, this.scale.height / 2 - 20,
         '+25 BONUS', { color: COLORS.goldHud, size: 18 });
       this.updateHud();
+      // 웨이브 클리어 후 퍽 선택 (breather 시작은 선택 완료 후)
+      this.showPerkSelector();
     }
+  }
+
+  showPerkSelector() {
+    const { width, height } = this.scale;
+    const perks = rollPerks(3);
+    const overlay = this.add.graphics().setDepth(800);
+    overlay.fillStyle(0x000000, 0.72);
+    overlay.fillRect(0, 0, width, height);
+
+    const title = this.add.text(width / 2, height * 0.18, 'WAVE CLEAR — CHOOSE A PERK', {
+      fontFamily: FONT.display, fontSize: '16px', fontStyle: '900',
+      color: '#f4c542', stroke: '#3e2e1e', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(801).setAlpha(0);
+    title.setLetterSpacing?.(3);
+    this.tweens.add({ targets: title, alpha: 1, duration: 220 });
+
+    const cardW = 110, cardH = 140, gap = 16;
+    const totalW = perks.length * cardW + (perks.length - 1) * gap;
+    const startX = (width - totalW) / 2 + cardW / 2;
+    const cardY = height * 0.5;
+    const uiObjs = [overlay, title];
+
+    perks.forEach((perk, i) => {
+      const cx = startX + i * (cardW + gap);
+      const c = this.add.container(cx, cardY).setDepth(802).setAlpha(0).setScale(0.7);
+      const bg = this.add.graphics();
+      bg.fillStyle(0x000000, 0.7);
+      bg.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW, cardH, 10);
+      bg.fillStyle(COLORS.parchment, 0.96);
+      bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+      bg.lineStyle(2, perk.color, 1);
+      bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+
+      const iconT = this.add.text(0, -cardH / 2 + 28, perk.icon, {
+        fontFamily: FONT.display, fontSize: '32px',
+        color: '#' + perk.color.toString(16).padStart(6, '0').padEnd(6, '0'),
+        stroke: '#3e2e1e', strokeThickness: 2,
+      }).setOrigin(0.5);
+      const nameT = this.add.text(0, -cardH / 2 + 66, perk.name, {
+        fontFamily: FONT.display, fontSize: '11px', fontStyle: '900',
+        color: '#3e2e1e', wordWrap: { width: cardW - 12 },
+      }).setOrigin(0.5);
+      const descT = this.add.text(0, -cardH / 2 + 96, perk.desc, {
+        fontFamily: FONT.mono, fontSize: '9px',
+        color: '#5a3e2e', wordWrap: { width: cardW - 16 },
+      }).setOrigin(0.5);
+
+      c.add([bg, iconT, nameT, descT]);
+      c.setSize(cardW, cardH);
+      c.setInteractive({ useHandCursor: true });
+
+      this.tweens.add({
+        targets: c, alpha: 1, scale: 1,
+        duration: 280, delay: 80 + i * 100, ease: 'Back.Out',
+      });
+
+      c.on('pointerover', () => {
+        bg.clear();
+        bg.fillStyle(0x000000, 0.7);
+        bg.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW, cardH, 10);
+        bg.fillStyle(perk.color, 0.18);
+        bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        bg.lineStyle(3, perk.color, 1);
+        bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        this.tweens.add({ targets: c, scale: 1.08, duration: 100 });
+      });
+      c.on('pointerout', () => {
+        bg.clear();
+        bg.fillStyle(0x000000, 0.7);
+        bg.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW, cardH, 10);
+        bg.fillStyle(COLORS.parchment, 0.96);
+        bg.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        bg.lineStyle(2, perk.color, 1);
+        bg.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 10);
+        this.tweens.add({ targets: c, scale: 1.0, duration: 100 });
+      });
+      c.on('pointerdown', () => {
+        perk.apply(this);
+        Audio.purchase?.();
+        Juice.flash(this, perk.color, 200);
+        Juice.popText(this, cx, cardY - cardH / 2 - 20, perk.name,
+          { color: perk.color, size: 14, rise: 30, duration: 700 });
+        uiObjs.forEach(o => o.destroy());
+        perks.forEach((_, j) => {
+          if (j !== i) {
+            const sibling = this.children.list.find(
+              ch => ch.constructor.name === 'Container' &&
+                    Math.abs(ch.x - (startX + j * (cardW + gap))) < 2 &&
+                    ch.depth === 802,
+            );
+            sibling?.destroy();
+          }
+        });
+        c.destroy();
+        // 퍽 선택 완료 → breather 시작
+        this.waveBreather = WAVE_BREATHER;
+        this.updateHud();
+      });
+
+      uiObjs.push(c);
+    });
   }
 
   // 인게임 업그레이드 — 코인 소비, 타워와 같은 통화
@@ -775,10 +878,21 @@ export class GameScene extends Phaser.Scene {
       Juice.shake(this, 0.014, 220);
       Juice.popText(this, this.boss.x, this.boss.y - 30, 'ENRAGED!',
         { color: 0xff5050, size: 16, rise: 28, duration: 700 });
-      // 미니언 — 즉시 4기 추가 스폰 (보스 위치는 path 따라 진행 중이므로 새 적은 path 시작점에서 등장)
       for (let i = 0; i < 4; i++) {
         this.time.delayedCall(i * 220, () => this.spawnEnemy('scout'));
       }
+    }
+    // 25% 분기 — 방어막 모드: 모든 데미지 35% 감소
+    if (!this.boss._armored && ratio <= 0.25) {
+      this.boss._armored = true;
+      this._bossArmorActive = true;
+      this.boss.body.setTint(0xff3333);
+      Juice.flash(this, 0xff2200, 320);
+      Juice.shake(this, 0.022, 300);
+      Juice.ring(this, this.boss.x, this.boss.y, { color: 0xff3333, radius: 80, count: 3, duration: 500 });
+      Juice.popText(this, this.boss.x, this.boss.y - 40, 'ARMOR MODE!',
+        { color: 0xff3333, size: 18, rise: 36, duration: 900 });
+      Audio.bomb?.();
     }
   }
 
@@ -841,7 +955,6 @@ export class GameScene extends Phaser.Scene {
   fireProjectile(tower, target) {
     const p = this.projectiles.find(pr => !pr.alive);
     if (!p) return;
-    // 모탈은 범위 폭격이라 호밍 X, 나머지(archer/cannon/frost)는 호밍
     const homing = tower.cfg.bulletKind !== 'mortar';
     p.reset(tower.x, tower.y - 6, target, tower.cfg.bulletKind, {
       damage: tower.damage,
@@ -850,7 +963,21 @@ export class GameScene extends Phaser.Scene {
       speed: tower.cfg.bulletSpeed,
       homing,
     });
-    Audio.tap();
+    // 타워 종류별 발사 피드백
+    const kind = tower.cfg.bulletKind;
+    if (kind === 'cannon') {
+      Audio.tap();
+      Juice.shake(this, 0.006, 60);
+    } else if (kind === 'mortar') {
+      Audio.tap();
+      Juice.shake(this, 0.009, 80);
+      Juice.ring(this, tower.x, tower.y, { color: 0xff8a3a, radius: 20, duration: 180 });
+    } else if (kind === 'frost') {
+      Audio.tap();
+      Juice.ring(this, tower.x, tower.y, { color: 0x80c8ff, radius: 16, duration: 200 });
+    } else {
+      Audio.tap();
+    }
   }
 
   checkProjectileVsEnemies(p) {
@@ -868,15 +995,19 @@ export class GameScene extends Phaser.Scene {
             const ddx = e2.x - p.x;
             const ddy = e2.y - p.y;
             if (ddx * ddx + ddy * ddy < (p.splash + 18) * (p.splash + 18)) {
-              this.spawnDmgNumber(e2.x, e2.y - 18, p.dmg, p.kind);
-              const killed = e2.takeDamage(p.dmg, hdx, hdy);
+              const dmg2 = (this._bossArmorActive && e2 === this.boss)
+                ? Math.ceil(p.dmg * 0.65) : p.dmg;
+              this.spawnDmgNumber(e2.x, e2.y - 18, dmg2, p.kind);
+              const killed = e2.takeDamage(dmg2, hdx, hdy);
               if (killed) this.onEnemyKilled(e2);
             }
           }
           this.spawnExplosion(p.x, p.y, p.splash);
         } else {
-          this.spawnDmgNumber(e.x, e.y - 18, p.dmg, p.kind);
-          const killed = e.takeDamage(p.dmg, hdx, hdy);
+          const dmg = (this._bossArmorActive && e === this.boss)
+            ? Math.ceil(p.dmg * 0.65) : p.dmg;
+          this.spawnDmgNumber(e.x, e.y - 18, dmg, p.kind);
+          const killed = e.takeDamage(dmg, hdx, hdy);
           if (p.slow > 0) e.applySlow(p.slow, 1500);
           if (killed) this.onEnemyKilled(e);
         }
@@ -959,15 +1090,24 @@ export class GameScene extends Phaser.Scene {
     const mult = this.combo >= 25 ? 4 : this.combo >= 15 ? 3 : this.combo >= 7 ? 2 : 1;
     this.score += e.scoreVal * mult;
     this.kills++;
-    if (e === this.boss) this.boss = null;
+    if (e === this.boss) {
+      this.boss = null;
+      this._bossArmorActive = false;
+    }
 
-    // 콤보 milestone popText
+    // 콤보 milestone popText + 강화 피드백
     const milestone = (this.combo === 7 || this.combo === 15 || this.combo === 25);
     if (milestone) {
       const label = this.combo === 7 ? 'STREAK!' : this.combo === 15 ? 'FRENZY!' : 'CARNAGE!';
+      const mColor = this.combo === 25 ? 0xff5050 : this.combo === 15 ? 0xf4c542 : 0xff8a3a;
+      const mSize = this.combo === 25 ? 24 : this.combo === 15 ? 21 : 18;
       Juice.popText(this, this.king.x, this.king.y - 36, label,
-        { color: 0xff8a3a, size: 18, rise: 36, duration: 700 });
-      Juice.flash(this, 0xff8a3a, 100);
+        { color: mColor, size: mSize, rise: 40, duration: 800 });
+      Juice.flash(this, mColor, 140);
+      Juice.shake(this, 0.008 + (this.combo / 25) * 0.006, 140);
+      Juice.ring(this, this.king.x, this.king.y,
+        { color: mColor, radius: 60 + this.combo * 2, count: 2, duration: 400 });
+      Audio.rankup?.();
     }
 
     // ── 코인/보석 드롭 ──

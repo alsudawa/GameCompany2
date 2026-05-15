@@ -361,39 +361,46 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  triggerLinkBonus(a, b) {
+  triggerLinkBonus(a, b, timeDiff) {
     const { width } = this.scale;
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
 
-    // 추가 보너스 점수
-    const bonus = 300;
+    // PERFECT SYNC (<80ms): +500점, 2젬 / SYNC (<320ms): +300점, 40% 1젬
+    const isPerfectSync = timeDiff <= 80;
+    const bonus = isPerfectSync ? 500 : 300;
     const prev = this.score;
     this.score += bonus;
     Juice.countUp(this, this.hudScore, prev, this.score, 220);
 
-    // LINK 팝업 (중앙)
-    this.showJudgmentFeedback('LINK', mx, my);
-    Juice.popText(this, mx, my + 30, `+${bonus}`, {
-      color: COLORS.magenta, size: 28,
-    });
-
-    // 중앙에서 양쪽으로 퍼지는 링 + 플래시
-    Juice.flash(this, COLORS.magenta, 180);
-    Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 240, count: 2, duration: 500 });
-    Juice.burst(this, a.x, a.y, { count: 14, color: COLORS.magenta, speed: 300 });
-    Juice.burst(this, b.x, b.y, { count: 14, color: COLORS.magenta, speed: 300 });
-
-    // 보너스 젬 (가끔)
-    if (Math.random() < 0.4) {
-      this.gemsEarned += 1;
-      Juice.popText(this, mx, my - 30, '💎 +1', {
-        color: COLORS.gold, size: 24, rise: 60, duration: 900,
-      });
+    if (isPerfectSync) {
+      // PERFECT SYNC — 더 강렬한 피드백
+      const label = 'PERFECT\nSYNC!';
+      Juice.popText(this, mx, my - 10, label, { color: COLORS.gold, size: 26, rise: 50, duration: 900 });
+      Juice.popText(this, mx, my + 40, `+${bonus}`, { color: COLORS.gold, size: 32 });
+      Juice.flash(this, COLORS.gold, 260);
+      Juice.ring(this, mx, my, { color: COLORS.gold, radius: 280, count: 3, duration: 600 });
+      Juice.burst(this, a.x, a.y, { count: 20, color: COLORS.gold, speed: 360 });
+      Juice.burst(this, b.x, b.y, { count: 20, color: COLORS.gold, speed: 360 });
+      Juice.shake(this, 0.018, 220);
+      this.gemsEarned += 2;
+      Juice.popText(this, mx, my - 60, '💎 +2', { color: COLORS.gold, size: 26, rise: 70, duration: 1000 });
+    } else {
+      // 일반 SYNC
+      this.showJudgmentFeedback('LINK', mx, my);
+      Juice.popText(this, mx, my + 30, `+${bonus}`, { color: COLORS.magenta, size: 28 });
+      Juice.flash(this, COLORS.magenta, 180);
+      Juice.ring(this, mx, my, { color: COLORS.magenta, radius: 240, count: 2, duration: 500 });
+      Juice.burst(this, a.x, a.y, { count: 14, color: COLORS.magenta, speed: 300 });
+      Juice.burst(this, b.x, b.y, { count: 14, color: COLORS.magenta, speed: 300 });
+      Juice.shake(this, 0.012, 180);
+      if (Math.random() < 0.4) {
+        this.gemsEarned += 1;
+        Juice.popText(this, mx, my - 30, '💎 +1', { color: COLORS.gold, size: 24, rise: 60, duration: 900 });
+      }
     }
 
     Audio.linkBonus?.();
-    Juice.shake(this, 0.012, 180);
   }
 
   onOrbMiss(orb) {
@@ -609,14 +616,31 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === ORB_KIND.BOMB) {
       Audio.bomb();
-      Juice.flash(this, COLORS.red, 200);
-      Juice.shake(this, 0.022, 260);
-      Juice.burst(this, obj.x, obj.y, { count: 18, color: COLORS.red, speed: 320 });
-      Juice.ring(this, obj.x, obj.y, { color: COLORS.red, radius: 160, count: 2 });
-      Juice.popText(this, obj.x, obj.y - 20, 'BREAK!', {
-        color: COLORS.red, size: 32,
-      });
-      this.resetCombo();
+      // DANGER ZONE: LVL5(마지막 8초)에서는 폭탄이 콤보를 완전 리셋하지 않음
+      const inDangerZone = this.levelIdx >= 4;
+      if (inDangerZone && this.combo > 0) {
+        const half = Math.floor(this.combo / 2);
+        this.combo = half;
+        this.lastTapAt = this.time.now;
+        if (this.combo >= 2) {
+          this.hudCombo.setText(`COMBO ×${Math.min(1 + this.combo * COMBO.bonusPerStep, COMBO.maxMul).toFixed(2)}  ${this.combo}`);
+        } else {
+          this.hudCombo.setText('');
+        }
+        this.drawComboBar();
+        Juice.flash(this, COLORS.red, 160);
+        Juice.shake(this, 0.014, 200);
+        Juice.burst(this, obj.x, obj.y, { count: 12, color: COLORS.red, speed: 260 });
+        Juice.ring(this, obj.x, obj.y, { color: COLORS.red, radius: 120, count: 1 });
+        Juice.popText(this, obj.x, obj.y - 20, 'DODGED!', { color: COLORS.red, size: 28 });
+      } else {
+        Juice.flash(this, COLORS.red, 200);
+        Juice.shake(this, 0.022, 260);
+        Juice.burst(this, obj.x, obj.y, { count: 18, color: COLORS.red, speed: 320 });
+        Juice.ring(this, obj.x, obj.y, { color: COLORS.red, radius: 160, count: 2 });
+        Juice.popText(this, obj.x, obj.y - 20, 'BREAK!', { color: COLORS.red, size: 32 });
+        this.resetCombo();
+      }
       obj.pop();
       Analytics.track('tap_bomb');
       return;
@@ -717,7 +741,8 @@ export class GameScene extends Phaser.Scene {
       const partnerTap = partner.linkTappedAt;
       obj.linkTappedAt = this.time.now;
       if (partnerTap && (this.time.now - partnerTap) <= LINK_WINDOW) {
-        this.triggerLinkBonus(obj, partner);
+        const timeDiff = this.time.now - partnerTap;
+        this.triggerLinkBonus(obj, partner, timeDiff);
       }
     }
 
